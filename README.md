@@ -1,0 +1,1 @@
+# ObjectDescriptionSupermarket-CVCS-UniMoRe
