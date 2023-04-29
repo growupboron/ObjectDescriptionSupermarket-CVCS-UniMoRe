@@ -4,7 +4,7 @@ import torch.optim as optim
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from datasets import GroceryStoreDataset01, collate_fn, transform
-
+import tqdm
 
 trainset = GroceryStoreDataset01(split='train', transform=transform)
 testset = GroceryStoreDataset01(split='test', transform=transform)
@@ -33,7 +33,7 @@ losses = []
 accuracies = []
 for epoch in range(epochs):
     running_loss = 0.0
-    for i, data in enumerate(trainloader):
+    for i, data in tqdm(enumerate(trainloader)):
         inputs, labels = data
         # labels = labels.view(-1)
 
@@ -44,7 +44,7 @@ for epoch in range(epochs):
 
         # forward + backward + optimize
         outputs = model(inputs)
-        print(labels)
+        
         loss = criterion(outputs, labels)
 
         loss.backward()
