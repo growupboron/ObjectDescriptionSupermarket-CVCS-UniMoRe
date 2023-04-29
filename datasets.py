@@ -38,7 +38,7 @@ class GroceryStoreDataset01(Dataset):
     # - root/val.txt
     def __init__(self, split='train', transform=None):
         super(GroceryStoreDataset01, self).__init__()
-        self.root = "Datasets/GroceryStoreDataset01"
+        self.root = "Datasets/GroceryStoreDataset-1/dataset"
         self.split = split
         self.transform = transform
         self.class_to_idx = {}
