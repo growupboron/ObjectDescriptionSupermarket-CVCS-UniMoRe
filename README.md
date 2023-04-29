@@ -1,2 +1,3 @@
 # Object Description Supermarket
-Repository for Computer vision and Cognitive services course project
+<h1> CVCS course project. </h1>
+
