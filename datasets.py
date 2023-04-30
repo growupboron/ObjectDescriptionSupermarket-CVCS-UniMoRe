@@ -1,11 +1,15 @@
 # create a custom dataset class for each dataset
+import json
 import os
 from PIL import Image
 import torch
+from PIL import ImageDraw
 from torch.utils.data import Dataset, DataLoader
-import torchvision
+import cv2
+
+'''import torchvision
 import torch.nn as nn
-import torch.optim as optim
+import torch.optim as optim'''
 
 import torchvision.transforms as transforms
 import matplotlib.pyplot as plt
@@ -81,6 +85,9 @@ class GroceryStoreDataset01(Dataset):
         # print(img.shape, label)
         return img, label
 
+    def description(self):
+        return "GroceryStoreDataset-1"
+
 
 def collate_fn(batch):
     """
@@ -140,4 +147,62 @@ class FreiburgDataset(Dataset):
             img = self.transform(img)
 
         return img, label
+
+
+class ShelvesDataset(Dataset):
+    """class for loading the Shelves dataset for object detection"""
+
+    # structure: root/[images/annotations]
+
+    def __init__(self, transform=None):
+        super(ShelvesDataset, self).__init__()
+
+        self.root = os.path.join("Datasets", "Supermarket+shelves", "Supermarket shelves", "Supermarket shelves")
+        self.transform = transform
+        self.num_files = len(os.listdir(os.path.join(self.root, "images")))
+
+    def __len__(self):
+        return self.num_files
+
+    def __getitem__(self, idx):
+        img_path = os.path.join(self.root, "images")
+        img_filename = os.listdir(img_path)[idx]
+
+        annotation_path = os.path.join(self.root, "annotations")
+        annotation_filename = os.listdir(annotation_path)[idx]
+
+        # read the image
+        img = Image.open(os.path.join(img_path, img_filename)).convert('RGB')
+        # img.show("img")
+
+        # Load the JSON annotation file
+        with open(os.path.join(annotation_path, annotation_filename)) as f:
+            data = json.load(f)
+
+        # Create an empty dictionary
+        boxes = {}
+
+        # Iterate over the objects list
+        for obj in data['objects']:
+            # Extract the classId and the bounding box coordinates
+            class_id = obj['classId']
+            x1, y1 = obj['points']['exterior'][0]
+            x2, y2 = obj['points']['exterior'][1]
+            box = [x1, y1, x2, y2]
+            # draw the bounding box
+
+        #    draw = ImageDraw.Draw(img)
+        #   draw.rectangle(box, outline='yellow', width=6)
+
+            # Add the bounding box to the dictionary
+            if class_id in boxes:
+                boxes[class_id].append(box)
+            else:
+                boxes[class_id] = [box]
+        #img.show("boxed_img")
+        # return the image and the correspondent bounding boxes
+        if transform:
+            img = self.transform(img)
+
+        return img, boxes
 
