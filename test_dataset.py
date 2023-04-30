@@ -4,16 +4,16 @@ import torch.optim as optim
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from datasets import GroceryStoreDataset01, collate_fn, transform
-import tqdm
+from tqdm import tqdm
 
 trainset = GroceryStoreDataset01(split='train', transform=transform)
 testset = GroceryStoreDataset01(split='test', transform=transform)
 valset = GroceryStoreDataset01(split='val', transform=transform)
 
 # create a dataloader
-trainloader = DataLoader(trainset, batch_size=32, shuffle=True, num_workers=0)
-testloader = DataLoader(testset, batch_size=32, shuffle=True, num_workers=0)
-valloader = DataLoader(testset, batch_size=32, shuffle=True, num_workers=0, collate_fn=collate_fn)
+trainloader = DataLoader(trainset, batch_size=32, shuffle=True, num_workers=8)
+testloader = DataLoader(testset, batch_size=32, shuffle=True, num_workers=8)
+valloader = DataLoader(testset, batch_size=32, shuffle=True, num_workers=8)
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 # instantiate the model--> resnet18
@@ -53,7 +53,7 @@ for epoch in range(epochs):
         # print statistics
         running_loss += loss.item()
 
-        if i % 200 == 199:  # print every 200 mini-batches
+        if i % 2 == 0:  # print every 200 mini-batches
             print('[%d, %5d] loss: %.3f' %
                   (epoch + 1, i + 1, running_loss / 200))
             losses.append(running_loss)
