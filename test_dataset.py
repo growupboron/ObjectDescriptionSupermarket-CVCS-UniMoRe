@@ -2,6 +2,7 @@ import torch
 import torchvision
 import torch.optim as optim
 import torch.nn as nn
+from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
 from datasets import GroceryStoreDataset01, collate_fn, transform
 from tqdm import tqdm
@@ -76,3 +77,7 @@ for epoch in range(epochs):
             accuracy = 100 * correct / total
 
         accuracies.append(accuracy)
+
+plt.plot(losses)
+plt.plot(accuracies)
+plt.show()
