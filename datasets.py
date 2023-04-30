@@ -94,3 +94,25 @@ def collate_fn(batch):
     targets_padded = torch.nn.utils.rnn.pad_sequence(targets, batch_first=True)
     # print(inputs_padded.shape, targets_padded.shape)
     return inputs_padded, targets_padded
+
+
+class FreiburgDataset(Dataset):
+    """class for loading the Freiburg dataset"""
+
+    def __init__(self):
+        super(FreiburgDataset, self).__init__()
+        self.root = "Datasets/freiburg_groceries_dataset/images"
+        self.transform = transform
+        self.samples = []
+        self.classes = []
+        self.labels = []
+        self.classId_file = "Datasets/freiburg_groceries_dataset/classid.txt"
+        self.load_classes()
+
+    def load_classes(self):
+        with open(self.classId_file, "r") as f:
+            lines = f.readlines()
+            for line in lines:
+                class_name, class_label = line.strip().split()
+                self.classes.append(class_name)
+                self.labels.append(class_label)
