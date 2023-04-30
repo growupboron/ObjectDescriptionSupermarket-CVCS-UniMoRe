@@ -1,3 +1,5 @@
+import os.path
+
 import torch
 import torchvision
 import torch.optim as optim
@@ -32,52 +34,58 @@ criterion = nn.CrossEntropyLoss()
 epochs = 10
 losses = []
 accuracies = []
-for epoch in range(epochs):
-    running_loss = 0.0
-    for i, data in tqdm(enumerate(trainloader)):
-        inputs, labels = data
-        # labels = labels.view(-1)
-
-        inputs = inputs.to(device)
-        labels = labels.to(device)
-        # zero the parameter gradients
-        optimizer.zero_grad()
-
-        # forward + backward + optimize
-        outputs = model(inputs)
-        
-        loss = criterion(outputs, labels)
-
-        loss.backward()
-        optimizer.step()
-
-        # print statistics
-        running_loss += loss.item()
-
-        if i % 2 == 0:  # print every 200 mini-batches
-            print('[%d, %5d] loss: %.3f' %
-                  (epoch + 1, i + 1, running_loss / 200))
-            losses.append(running_loss)
-            running_loss = 0.0
-
-    # test the model
-    correct = 0
-    total = 0
-    with torch.no_grad():
-        for data in testloader:
-            images, labels = data
-            images = images.to(device)
+if not os.path.exists("model.pth"):
+    for epoch in range(epochs):
+        running_loss = 0.0
+        for i, data in tqdm(enumerate(trainloader)):
+            inputs, labels = data
+            # labels = labels.view(-1)
+    
+            inputs = inputs.to(device)
             labels = labels.to(device)
+            # zero the parameter gradients
+            optimizer.zero_grad()
+    
+            # forward + backward + optimize
+            outputs = model(inputs)
+            
+            loss = criterion(outputs, labels)
+    
+            loss.backward()
+            optimizer.step()
+    
+            # print statistics
+            running_loss += loss.item()
+    
+            if i % 2 == 0:  # print every 200 mini-batches
+                print('[%d, %5d] loss: %.3f' %
+                      (epoch + 1, i + 1, running_loss / 200))
+                losses.append(running_loss)
+                running_loss = 0.0
+else:
+    model.load_state_dict(torch.load("model.pth"))
+# test the model
+correct = 0
+total = 0
+with torch.no_grad():
+    for data in testloader:
+        images, labels = data
+        images = images.to(device)
+        labels = labels.to(device)
 
-            outputs = model(images)
-            _, predicted = torch.max(outputs.data, 1)
+        outputs = model(images)
+        _, predicted = torch.max(outputs.data, 1)
 
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
-            accuracy = 100 * correct / total
+        total += labels.size(0)
+        correct += (predicted == labels).sum().item()
+    accuracy = 100 * correct / total
+    print('Accuracy of the network on the test images: %d {}' % accuracy)
 
-        accuracies.append(accuracy)
 
-plt.plot(losses)
+# save the model
+model.save_state_dict("model.pth")
+
+'''plt.plot(losses)
 plt.plot(accuracies)
-plt.show()
+plt.show()'''
+
