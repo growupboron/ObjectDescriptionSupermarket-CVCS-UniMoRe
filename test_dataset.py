@@ -53,7 +53,7 @@ for epoch in range(epochs):
         # print statistics
         running_loss += loss.item()
 
-        if i % 200 == 199:  # print every 200 mini-batches
+        if i % 2 == 0:  # print every 200 mini-batches
             print('[%d, %5d] loss: %.3f' %
                   (epoch + 1, i + 1, running_loss / 200))
             losses.append(running_loss)
