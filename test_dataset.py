@@ -31,38 +31,59 @@ optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
 criterion = nn.CrossEntropyLoss()
 
 # train the model
-epochs = 10
+epochs = 25
 losses = []
 accuracies = []
 if not os.path.exists("model.pth"):
     model.train()
     for epoch in range(epochs):
         running_loss = 0.0
-        for i, data in tqdm(enumerate(trainloader)):
+        pbar = tqdm(trainloader, desc=f'Epoch {epoch + 1}/{epochs}', unit='batch')
+
+        for i, data in enumerate(pbar):
             inputs, labels = data
-            # labels = labels.view(-1)
-    
             inputs = inputs.to(device)
             labels = labels.to(device)
-            # zero the parameter gradients
             optimizer.zero_grad()
-    
-            # forward + backward + optimize
             outputs = model(inputs)
-            
             loss = criterion(outputs, labels)
-    
             loss.backward()
             optimizer.step()
-    
-            # print statistics
+
             running_loss += loss.item()
-    
-            if i % 2 == 0:  # print every 200 mini-batches
-                print('[%d, %5d] loss: %.3f' %
-                      (epoch + 1, i + 1, running_loss / 200))
-                losses.append(running_loss)
-                running_loss = 0.0
+
+            # validate the model
+            acc = 0
+            if i % 10 == 0:
+                model.eval()
+                correct = 0
+                total = 0
+                with torch.no_grad():
+                    for data in valloader:
+                        images, labels = data
+                        images = images.to(device)
+                        labels = labels.to(device)
+
+                        outputs = model(images)
+                        _, predicted = torch.max(outputs.data, 1)
+
+                        total += labels.size(0)
+                        correct += (predicted == labels).sum().item()
+                    acc = 100 * correct / total
+                    accuracies.append(acc)
+                model.train()
+
+            pbar.set_postfix({'loss': running_loss / (i + 1), 'accuracy': acc})
+
+        losses.append(running_loss)
+
+    print(''''
+##################################################################################
+#                                                                                #
+#                       Training Completed                                       #
+#                                                                                #
+##################################################################################
+''')
 else:
     model.load_state_dict(torch.load("model.pth"))
 
@@ -84,10 +105,24 @@ with torch.no_grad():
     accuracy = 100 * correct / total
     print(f'Accuracy of the network on the test images: {accuracy}%')
 
-
+print(''''
+##################################################################################
+#                                                                                #
+#                       Testing Completed                                        #
+#                                                                                #
+##################################################################################
+''')
 # save the model
 torch.save(model.state_dict(), "model.pth")
 
+
+print(''''
+##################################################################################
+#                                                                                #
+#                       Model Saved                                              #
+#                                                                                #
+##################################################################################
+''')
 '''plt.plot(losses)
 plt.plot(accuracies)
 plt.show()'''
