@@ -35,6 +35,7 @@ epochs = 10
 losses = []
 accuracies = []
 if not os.path.exists("model.pth"):
+    model.train()
     for epoch in range(epochs):
         running_loss = 0.0
         for i, data in tqdm(enumerate(trainloader)):
@@ -64,7 +65,9 @@ if not os.path.exists("model.pth"):
                 running_loss = 0.0
 else:
     model.load_state_dict(torch.load("model.pth"))
+
 # test the model
+model.eval()
 correct = 0
 total = 0
 with torch.no_grad():
@@ -83,7 +86,7 @@ with torch.no_grad():
 
 
 # save the model
-model.save_state_dict("model.pth")
+torch.save(model.state_dict(), "model.pth")
 
 '''plt.plot(losses)
 plt.plot(accuracies)
