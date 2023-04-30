@@ -18,7 +18,7 @@ transform = transforms.Compose([
     transforms.Resize(256),  # resize the image to 256x256 pixels
     transforms.CenterCrop(224),  # crop the image to 224x224 pixels around the center
     transforms.ToTensor(),  # convert the image to a PyTorch tensor
-    #transforms.Normalize(mean=mean, std=std),  # normalize the image
+    # transforms.Normalize(mean=mean, std=std),  # normalize the image
     transforms.GaussianBlur(kernel_size=(5, 5)),
     transforms.RandomHorizontalFlip(p=0.5),  #
     # transforms.RandomRotation(degrees=180),  # data augmentation
@@ -99,15 +99,19 @@ def collate_fn(batch):
 class FreiburgDataset(Dataset):
     """class for loading the Freiburg dataset"""
 
-    def __init__(self):
+    def __init__(self, split='train', num_split=0, transform=None):
         super(FreiburgDataset, self).__init__()
         self.root = "Datasets/freiburg_groceries_dataset/images"
+        self.split = split
+        self.num_split = num_split
         self.transform = transform
         self.samples = []
         self.classes = []
         self.labels = []
         self.classId_file = "Datasets/freiburg_groceries_dataset/classid.txt"
         self.load_classes()
+        self.split_dir = os.path.join(self.root, self.split + str(self.num_split))
+        self.load_samples()
 
     def load_classes(self):
         with open(self.classId_file, "r") as f:
@@ -116,3 +120,23 @@ class FreiburgDataset(Dataset):
                 class_name, class_label = line.strip().split()
                 self.classes.append(class_name)
                 self.labels.append(class_label)
+
+    def load_samples(self):
+        with open(os.path.join(self.split_dir, ".txt"), "r") as f:
+            lines = f.readlines()
+            for line in lines:
+                line = line.strip()
+                img_path, class_id = line.strip().split()
+                self.samples.append((os.path.join(self.split_dir, img_path), int(class_id)))
+
+    def __len__(self):
+        return len(self.classes)
+
+    def __getitem__(self, idx):
+        img_path, label = self.samples[idx]
+        img = Image.open(img_path).convert('RGB')
+
+        if self.transform:
+            img = self.transform(img)
+
+        return img, label
