@@ -1,4 +1,5 @@
 # create a custom dataset class for each dataset
+import json
 import os
 from PIL import Image
 import torch
@@ -141,3 +142,52 @@ class FreiburgDataset(Dataset):
 
         return img, label
 
+
+class ShelvesDataset(Dataset):
+    """class for loading the Shelves dataset for object detection"""
+
+    # structure: root/[images/annotations]
+
+    def __init__(self, transform=None):
+        super(ShelvesDataset, self).__init__()
+        self.root = "Datasets/Supermarket+shelves/Supermarket shelves/Supermarket shelves"
+        self.transform = transform
+        self.num_files = len(os.listdir(os.path.join(self.root, "images")))
+
+    def __len__(self):
+        return self.num_files
+
+    def __getitem__(self, idx):
+        img_path = os.path.join(self.root, "images")
+        img_filename = os.listdir(img_path)[idx]
+
+        annotation_path = os.path.join(self.root, "annotations")
+        annotation_filename = os.listdir(annotation_path)[idx]
+
+        # read the image
+        img = Image.open(img_path).convert('RGB')
+
+        boxes = {}
+        # Load the JSON annotation file
+        with open('annotation.json') as f:
+            data = json.load(f)
+
+        # Create an empty dictionary
+        boxes = {}
+
+        # Iterate over the objects list
+        for obj in data['objects']:
+            # Extract the classId and the bounding box coordinates
+            class_id = obj['classId']
+            x1, y1 = obj['points']['exterior'][0]
+            x2, y2 = obj['points']['exterior'][1]
+            box = [x1, y1, x2, y2]
+
+            # Add the bounding box to the dictionary
+            if class_id in boxes:
+                boxes[class_id].append(box)
+            else:
+                boxes[class_id] = [box]
+
+        # return the image and the correspondent bounding boxes
+        return img, boxes
