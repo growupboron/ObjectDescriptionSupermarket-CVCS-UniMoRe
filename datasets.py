@@ -18,7 +18,7 @@ transform = transforms.Compose([
     transforms.Resize(256),  # resize the image to 256x256 pixels
     transforms.CenterCrop(224),  # crop the image to 224x224 pixels around the center
     transforms.ToTensor(),  # convert the image to a PyTorch tensor
-    transforms.Normalize(mean=mean, std=std),  # normalize the image
+    #transforms.Normalize(mean=mean, std=std),  # normalize the image
     transforms.GaussianBlur(kernel_size=(5, 5)),
     transforms.RandomHorizontalFlip(p=0.5),  #
     # transforms.RandomRotation(degrees=180),  # data augmentation
