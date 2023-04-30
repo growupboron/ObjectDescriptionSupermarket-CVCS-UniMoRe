@@ -31,7 +31,7 @@ optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
 criterion = nn.CrossEntropyLoss()
 
 # train the model
-epochs = 10
+epochs = 50
 losses = []
 accuracies = []
 if not os.path.exists("model.pth"):
@@ -60,7 +60,7 @@ if not os.path.exists("model.pth"):
     
             if i % 2 == 0:  # print every 200 mini-batches
                 print('[%d, %5d] loss: %.3f' %
-                      (epoch + 1, i + 1, running_loss / 200))
+                      (epoch + 1, i + 1, running_loss))
                 losses.append(running_loss)
                 running_loss = 0.0
 else:
