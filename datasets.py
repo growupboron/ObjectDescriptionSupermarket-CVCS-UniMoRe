@@ -140,3 +140,4 @@ class FreiburgDataset(Dataset):
             img = self.transform(img)
 
         return img, label
+
