@@ -7,9 +7,9 @@ from PIL import ImageDraw
 from torch.utils.data import Dataset, DataLoader
 import cv2
 
-'''import torchvision
+import torchvision
 import torch.nn as nn
-import torch.optim as optim'''
+import torch.optim as optim
 
 import torchvision.transforms as transforms
 import matplotlib.pyplot as plt
