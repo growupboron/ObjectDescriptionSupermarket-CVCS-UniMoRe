@@ -21,7 +21,7 @@ import matplotlib.pyplot as plt
 mean = (0.485, 0.456, 0.406)
 std = (0.229, 0.224, 0.225)
 # Define transforms
-transform = transforms.Compose([
+TRANSFORM = transforms.Compose([
     transforms.Resize(256),  # resize the image to 256x256 pixels
     transforms.CenterCrop(224),  # crop the image to 224x224 pixels around the center
     transforms.ToTensor(),  # convert the image to a PyTorch tensor

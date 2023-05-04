@@ -6,12 +6,12 @@ import torch.optim as optim
 import torch.nn as nn
 from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
-from datasets import GroceryStoreDataset01, collate_fn, transform
+from datasets import GroceryStoreDataset01, collate_fn, TRANSFORM
 from tqdm import tqdm
 
-trainset = GroceryStoreDataset01(split='train', transform=transform)
-testset = GroceryStoreDataset01(split='test', transform=transform)
-valset = GroceryStoreDataset01(split='val', transform=transform)
+trainset = GroceryStoreDataset01(split='train', transform=TRANSFORM)
+testset = GroceryStoreDataset01(split='test', transform=TRANSFORM)
+valset = GroceryStoreDataset01(split='val', transform=TRANSFORM)
 
 # create a dataloader
 trainloader = DataLoader(trainset, batch_size=32, shuffle=True, num_workers=8)
@@ -32,7 +32,7 @@ model.fc = nn.Linear(model.fc.in_features, num_classes).to(device)
 optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
 
 # define the scheduler
-scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=7, gamma=0.1)
+scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=10)
 # define the loss function
 criterion = nn.CrossEntropyLoss()
 
@@ -47,15 +47,16 @@ if not os.path.exists("classifier.pth"):
         pbar = tqdm(trainloader, desc=f'Epoch {epoch + 1}/{epochs}', unit='batch')
 
         for i, data in enumerate(pbar):
+
             inputs, labels = data
-            inputs = inputs.to(device)
-            labels = labels.to(device)
+            inputs, labels = inputs.to(device),labels.to(device)
+
             optimizer.zero_grad()
             outputs = model(inputs)
             loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
-
+            scheduler.step()
             running_loss += loss.item()
 
             # validate the model
