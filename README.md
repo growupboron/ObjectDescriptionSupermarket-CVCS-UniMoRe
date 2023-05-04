@@ -3,7 +3,7 @@
 
 If you want to check th results of the tes script, just run test_dataset.py script:
 ```bash
-python test_dataset.py
+python product_recognition.py
 ```
 If you have time to waste and want to train the model, delete the model.pth file and run again the script mentioned above.
 

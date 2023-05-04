@@ -4,7 +4,7 @@ from PIL import Image
 from PIL import ImageDraw
 from torch import optim, nn, device
 from torchvision.models.detection import fasterrcnn_resnet50_fpn_v2, FasterRCNN_ResNet50_FPN_V2_Weights
-from torchvision.transforms import Compose
+from torchvision.transforms import Compose, GaussianBlur
 from torchvision.transforms import Resize, ToTensor, Normalize
 from torchvision.transforms.functional import to_pil_image
 from torchvision.utils import draw_bounding_boxes
@@ -13,7 +13,8 @@ from datasets import ShelvesDataset
 
 # Define the image preprocessing transforms
 preprocess = Compose([
-    Resize(size=(2000, 2000)),
+    #Resize(size=(2000, 2000)),
+    GaussianBlur(kernel_size=(5, 5)),
     ToTensor(),
     #Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
 ])
@@ -26,15 +27,14 @@ val_dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=True
 
 # Load the object detection and segmentation model
 weights = FasterRCNN_ResNet50_FPN_V2_Weights.DEFAULT
-model = fasterrcnn_resnet50_fpn_v2(weights=weights, box_score_thresh=0.8)
+model = fasterrcnn_resnet50_fpn_v2(weights=weights, box_score_thresh=0.3)
 
 #model.roi_heads = torch.nn.Linear(in_features=1024, out_features=2, bias=True)
-
 
 # Load the 3D spatial reasoning model (not implemented in this code)
 print("Loading image...",end='')
 # Load an image
-img = Image.open("./Datasets/Supermarket+shelves/Supermarket shelves/Supermarket shelves/images/004.jpg")
+img = Image.open("Datasets/SKU110/images/train_7797.jpg")
 print("Done!")
 # Apply the image preprocessing transforms
 img_tensor = preprocess(img)
@@ -72,7 +72,7 @@ boxes = torch.tensor(boxes)
 # Convert boxes to (x1, y1, x2, y2) format
 boxes = torchvision.ops.box_convert(boxes, in_fmt='xyxy', out_fmt='xywh')
 boxes[:, 2:] += boxes[:, :2]
-print(f'boxes: {boxes}')
+#print(f'boxes: {boxes}')
 # Visualize the object detection and segmentation results
 '''masks = draw_bounding_boxes(img_tensor.type(torch.uint8), boxes=boxes,
                                  labels=labels,

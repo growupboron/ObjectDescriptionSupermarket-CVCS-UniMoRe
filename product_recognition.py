@@ -22,11 +22,17 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 # instantiate the model--> resnet18
 model = torchvision.models.resnet18(pretrained=True).to(device)
 
+# fine-tune changing the last layer
+num_classes = len(trainset.classes)
+
+model.fc = nn.Linear(model.fc.in_features, num_classes).to(device)
 # train and test the model
 
 # define the optimizer
 optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
 
+# define the scheduler
+scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=7, gamma=0.1)
 # define the loss function
 criterion = nn.CrossEntropyLoss()
 
@@ -34,7 +40,7 @@ criterion = nn.CrossEntropyLoss()
 epochs = 25
 losses = []
 accuracies = []
-if not os.path.exists("model.pth"):
+if not os.path.exists("classifier.pth"):
     model.train()
     for epoch in range(epochs):
         running_loss = 0.0
@@ -78,14 +84,14 @@ if not os.path.exists("model.pth"):
         losses.append(running_loss)
 
     print(''''
-##################################################################################
-#                                                                                #
-#                       Training Completed                                       #
-#                                                                                #
-##################################################################################
+#################################################################
+#                                                               #
+#                       Training Completed                       #
+#                                                               #                 
+#################################################################
 ''')
 else:
-    model.load_state_dict(torch.load("model.pth"))
+    model.load_state_dict(torch.load("detector.pth"))
 
 # test the model
 model.eval()
@@ -103,25 +109,25 @@ with torch.no_grad():
         total += labels.size(0)
         correct += (predicted == labels).sum().item()
     accuracy = 100 * correct / total
-    print(f'Accuracy of the network on the test images: {accuracy}%')
+    print(f'Accuracy of the network on the test images: {round(accuracy, 1)}%')
 
 print(''''
-##################################################################################
-#                                                                                #
-#                       Testing Completed                                        #
-#                                                                                #
-##################################################################################
+#################################################################
+#                                                               #
+#                       Testing Completed                       #
+#                                                               #                 
+#################################################################
 ''')
 # save the model
 torch.save(model.state_dict(), "model.pth")
 
 
 print(''''
-##################################################################################
-#                                                                                #
-#                       Model Saved                                              #
-#                                                                                #
-##################################################################################
+#################################################################
+#                                                               #
+#                       Model Saved                             #
+#                                                               #                 
+#################################################################
 ''')
 '''plt.plot(losses)
 plt.plot(accuracies)

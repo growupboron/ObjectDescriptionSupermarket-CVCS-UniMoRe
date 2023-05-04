@@ -28,7 +28,7 @@ transform = transforms.Compose([
     # transforms.Normalize(mean=mean, std=std),  # normalize the image
     transforms.GaussianBlur(kernel_size=(5, 5)),
     transforms.RandomHorizontalFlip(p=0.5),  #
-    # transforms.RandomRotation(degrees=180),  # data augmentation
+    transforms.RandomRotation(degrees=180),  # data augmentation
     transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.05),
 
     # see https://pytorch.org/docs/stable/torchvision/transforms.html for more transforms
