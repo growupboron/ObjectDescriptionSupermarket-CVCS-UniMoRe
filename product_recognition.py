@@ -14,9 +14,9 @@ testset = GroceryStoreDataset01(split='test', transform=TRANSFORM)
 valset = GroceryStoreDataset01(split='val', transform=TRANSFORM)
 
 # create a dataloader
-trainloader = DataLoader(trainset, batch_size=32, shuffle=True, num_workers=0)
-testloader = DataLoader(testset, batch_size=32, shuffle=True, num_workers=0)
-valloader = DataLoader(testset, batch_size=32, shuffle=True, num_workers=0)
+trainloader = DataLoader(trainset, batch_size=64, shuffle=True, num_workers=8)
+testloader = DataLoader(testset, batch_size=64, shuffle=True, num_workers=8)
+valloader = DataLoader(testset, batch_size=64, shuffle=True, num_workers=8)
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 # instantiate the model--> resnet18
@@ -40,49 +40,50 @@ criterion = nn.CrossEntropyLoss()
 epochs = 15
 losses = []
 accuracies = []
-if not os.path.exists("model.pth"):
-    model.train()
-    for epoch in range(epochs):
-        running_loss = 0.0
-        pbar = tqdm(trainloader, desc=f'Epoch {epoch + 1}/{epochs}', unit='batch')
+if os.path.exists("model.pth"):
+    model.load_state_dict(torch.load("model.pth"))
+model.train()
+for epoch in range(epochs):
+    running_loss = 0.0
+    pbar = tqdm(trainloader, desc=f'Epoch {epoch + 1}/{epochs}', unit='batch')
 
-        for i, data in enumerate(pbar):
+    for i, data in enumerate(pbar):
 
-            inputs, labels = data
-            inputs, labels = inputs.to(device),labels.to(device)
+        inputs, labels = data
+        inputs, labels = inputs.to(device),labels.to(device)
 
-            optimizer.zero_grad()
-            outputs = model(inputs)
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
-            scheduler.step()
-            running_loss += loss.item()
+        optimizer.zero_grad()
+        outputs = model(inputs)
+        loss = criterion(outputs, labels)
+        loss.backward()
+        optimizer.step()
+        scheduler.step()
+        running_loss += loss.item()
 
-            # validate the model
-            acc = 0
-            if i % 10 == 0:
-                model.eval()
-                correct = 0
-                total = 0
-                with torch.no_grad():
-                    for data in valloader:
-                        images, labels = data
-                        images = images.to(device)
-                        labels = labels.to(device)
+        # validate the model
+        acc = 0
+        if i % 10 == 0:
+            model.eval()
+            correct = 0
+            total = 0
+            with torch.no_grad():
+                for data in valloader:
+                    images, labels = data
+                    images = images.to(device)
+                    labels = labels.to(device)
 
-                        outputs = model(images)
-                        _, predicted = torch.max(outputs.data, 1)
+                    outputs = model(images)
+                    _, predicted = torch.max(outputs.data, 1)
 
-                        total += labels.size(0)
-                        correct += (predicted == labels).sum().item()
-                    acc = 100 * correct / total
-                    accuracies.append(acc)
-                model.train()
+                    total += labels.size(0)
+                    correct += (predicted == labels).sum().item()
+                acc = 100 * correct / total
+                accuracies.append(acc)
+            model.train()
 
-            pbar.set_postfix({'loss': running_loss / (i + 1), 'accuracy': acc})
+        pbar.set_postfix({'loss': running_loss / (i + 1)})
 
-        losses.append(running_loss)
+    losses.append(running_loss)
 
     print(''''
 #################################################################
@@ -91,8 +92,7 @@ if not os.path.exists("model.pth"):
 #                                                               #                 
 #################################################################
 ''')
-else:
-    model.load_state_dict(torch.load("model.pth"))
+
 
 # test the model
 model.eval()
