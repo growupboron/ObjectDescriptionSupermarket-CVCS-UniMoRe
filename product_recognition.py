@@ -85,7 +85,7 @@ for epoch in range(epochs):
 
     losses.append(running_loss)
 
-    print(''''
+print(''''
 #################################################################
 #                                                               #
 #                       Training Completed                       #
