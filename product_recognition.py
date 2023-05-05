@@ -29,7 +29,7 @@ model.fc = nn.Linear(model.fc.in_features, num_classes).to(device)
 # train and test the model
 
 # define the optimizer
-optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
+optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
 
 # define the scheduler
 scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=10)
@@ -37,10 +37,10 @@ scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=10)
 criterion = nn.CrossEntropyLoss()
 
 # train the model
-epochs = 25
+epochs = 15
 losses = []
 accuracies = []
-if not os.path.exists("classifier.pth"):
+if not os.path.exists("model.pth"):
     model.train()
     for epoch in range(epochs):
         running_loss = 0.0
@@ -92,7 +92,7 @@ if not os.path.exists("classifier.pth"):
 #################################################################
 ''')
 else:
-    model.load_state_dict(torch.load("detector.pth"))
+    model.load_state_dict(torch.load("model.pth"))
 
 # test the model
 model.eval()
@@ -130,8 +130,8 @@ print(''''
 #                                                               #                 
 #################################################################
 ''')
-'''plt.plot(losses)
+plt.plot(losses)
 plt.plot(accuracies)
-plt.show()'''
+plt.show()
 
 
