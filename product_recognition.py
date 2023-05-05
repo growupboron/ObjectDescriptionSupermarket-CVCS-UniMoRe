@@ -50,7 +50,7 @@ for epoch in range(epochs):
     for i, data in enumerate(pbar):
 
         inputs, labels = data
-        inputs, labels = inputs.to(device),labels.to(device)
+        inputs, labels = inputs.to(device), labels.to(device)
 
         optimizer.zero_grad()
         outputs = model(inputs)
@@ -93,7 +93,6 @@ print(''''
 #################################################################
 ''')
 
-
 # test the model
 model.eval()
 correct = 0
@@ -122,7 +121,6 @@ print(''''
 # save the model
 torch.save(model.state_dict(), "model.pth")
 
-
 print(''''
 #################################################################
 #                                                               #
@@ -133,5 +131,3 @@ print(''''
 plt.plot(losses)
 plt.plot(accuracies)
 plt.show()
-
-
