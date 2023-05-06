@@ -14,9 +14,9 @@ testset = GroceryStoreDataset01(split='test', transform=TRANSFORM)
 valset = GroceryStoreDataset01(split='val', transform=TRANSFORM)
 
 # create a dataloader
-trainloader = DataLoader(trainset, batch_size=64, shuffle=True, num_workers=8)
-testloader = DataLoader(testset, batch_size=64, shuffle=True, num_workers=8)
-valloader = DataLoader(testset, batch_size=64, shuffle=True, num_workers=8)
+trainloader = DataLoader(trainset, batch_size=64, shuffle=True, num_workers=6)
+testloader = DataLoader(testset, batch_size=64, shuffle=True, num_workers=6)
+valloader = DataLoader(testset, batch_size=64, shuffle=True, num_workers=6)
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 # instantiate the model--> resnet18
