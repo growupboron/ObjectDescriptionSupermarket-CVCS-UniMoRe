@@ -24,8 +24,9 @@ testloader = DataLoader(testset, batch_size=32, shuffle=True, num_workers=4)
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 print(f'Running on {device}...')
-model = torchvision.models.resnet18(weights=torchvision.models.ResNet18_Weights.DEFAULT).to(device)
+#model = torchvision.models.resnet18(weights=torchvision.models.ResNet18_Weights.DEFAULT).to(device)
 
+model = torchvision.models.resnet18().to(device)
 model.fc = nn.Sequential(nn.Linear(
     model.fc.in_features,  num_classes).to(device),
     torch.nn.ReLU()
@@ -36,7 +37,7 @@ scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=10)
 
 if os.path.exists('classifier.pth'):
     model.load_state_dict(torch.load('classifier.pth'))
-epochs = 25
+epochs = 40
 
 print('''
 #################################################################
