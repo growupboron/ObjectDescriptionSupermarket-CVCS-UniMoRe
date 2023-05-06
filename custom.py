@@ -24,8 +24,9 @@ testloader = DataLoader(testset, batch_size=32, shuffle=True, num_workers=4)
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 print(f'Running on {device}...')
-model = torchvision.models.resnet18(weights=torchvision.models.ResNet18_Weights.DEFAULT).to(device)
+#model = torchvision.models.resnet18(weights=torchvision.models.ResNet18_Weights.DEFAULT).to(device)
 
+model = torchvision.models.resnet18().to(device)
 model.fc = nn.Sequential(nn.Linear(
     model.fc.in_features,  num_classes).to(device),
     torch.nn.ReLU()
@@ -36,7 +37,7 @@ scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=10)
 
 if os.path.exists('classifier.pth'):
     model.load_state_dict(torch.load('classifier.pth'))
-epochs = 25
+epochs = 40
 
 print('''
 #################################################################
@@ -118,7 +119,7 @@ print('''
 # final test
 
 print('Testing Started...')
-
+x_axis = np.linspace(1, epochs, epochs)
 correct = 0
 test_pbar = tqdm(testloader, desc=f'Testing', unit='batch')
 
@@ -130,5 +131,8 @@ for test_data in test_pbar:
 
 accuracy = round(correct*100 / len(testset), 1)
 print(f'Final Accuracy: {accuracy}%')
-fig = plt.plot(losses, val_losses)
+fig, ax = plt.subplots()
+ax.plot(x, losses, label="training loss")
+ax.plot(x, val_losses, label="validation loss")
+ax.legend()
 plt.saveplot('train_results.png')
