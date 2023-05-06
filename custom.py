@@ -118,7 +118,7 @@ print('''
 # final test
 
 print('Testing Started...')
-
+x_axis = np.linspace(1, epochs, epochs)
 correct = 0
 test_pbar = tqdm(testloader, desc=f'Testing', unit='batch')
 
@@ -130,5 +130,8 @@ for test_data in test_pbar:
 
 accuracy = round(correct*100 / len(testset), 1)
 print(f'Final Accuracy: {accuracy}%')
-fig = plt.plot(losses, val_losses)
+fig, ax = plt.subplots()
+ax.plot(x, losses, label="training loss")
+ax.plot(x, val_losses, label="validation loss")
+ax.legend()
 plt.saveplot('train_results.png')
