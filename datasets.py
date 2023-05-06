@@ -22,11 +22,11 @@ mean = (0.485, 0.456, 0.406)
 std = (0.229, 0.224, 0.225)
 # Define transforms
 TRANSFORM = transforms.Compose([
-    transforms.Resize(224),  # resize the image to 256x256 pixels
+    transforms.Resize((224,224)),  # resize the image to 256x256 pixels
     transforms.ToTensor(),  # convert the image to a PyTorch tensor
-    transforms.Normalize(mean=mean, std=std),  # normalize the image
+    #transforms.Normalize(mean=mean, std=std),  # normalize the image
     transforms.GaussianBlur(kernel_size=(5, 5)),
-    transforms.RandomHorizontalFlip(p=0.5),  #
+    transforms.RandomHorizontalFlip(p=0.2),  #
     #transforms.RandomRotation(degrees=180),  # data augmentation
     transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.05),
 

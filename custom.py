@@ -21,22 +21,22 @@ valset = GroceryStoreDataset01(split='val', transform=TRANSFORM)
 testset = GroceryStoreDataset01(split='test', transform=TRANSFORM)
 num_classes = len(trainset.classes)
 
-trainloader = DataLoader(trainset, batch_size=32, shuffle=True, num_workers=6)
-valloader = DataLoader(valset, batch_size=32, shuffle=True, num_workers=6)
-testloader = DataLoader(testset, batch_size=32, shuffle=True, num_workers=6)
+trainloader = DataLoader(trainset, batch_size=64, shuffle=True, num_workers=4)
+valloader = DataLoader(valset, batch_size=64, shuffle=True, num_workers=4)
+testloader = DataLoader(testset, batch_size=64, shuffle=True, num_workers=4)
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 print(f'Running on {device}...')
-model = torchvision.models.resnet18(weights=torchvision.models.ResNet18_Weights.IMAGENET1K_V1).to(device)
-model.fc = nn.Linear(model.fc.in_features, num_classes).to(device)
+model = torchvision.models.resnet18(weights=torchvision.models.ResNet18_Weights.DEFAULT ).to(device)
 
+model.fc = nn.Linear(model.fc.in_features, num_classes).to(device)
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.8)
-scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2)
+optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
+scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=10)
 
 if os.path.exists('classifier.pth'):
     model.load_state_dict(torch.load('classifier.pth'))
-epochs = 20
+epochs = 15
 
 print('''
 #################################################################
