@@ -76,6 +76,7 @@ for epoch in range(epochs):
         
     model.eval()
     correct = 0
+    val_loss = 0
     total = 0
     with torch.no_grad():
         for idx, data in enumerate(valloader):
