@@ -10,22 +10,22 @@ from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
 from torchvision.models import GoogLeNet_Weights
 import sys
-from datasets import GroceryStoreDataset01, collate_fn, TRANSFORM
+from datasets import GroceryStoreDataset01, collate_fn, TEST_TRANSFORM
 from tqdm import tqdm
 
 
-testset = GroceryStoreDataset01(split='test', transform=TRANSFORM)
+testset = GroceryStoreDataset01(split='test', transform=TEST_TRANSFORM)
 num_classes = 81
 
 testloader = DataLoader(testset, batch_size=32, shuffle=True, num_workers=6)
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 print(f'Running on {device}...')
-model = torchvision.models.resnet18(weights=torchvision.models.ResNet18_Weights.DEFAULT).to(device)
-
+# model = torchvision.models.efficientnet_b0(pretrained=True).to(device)
+model = torchvision.models.densenet121(pretrained=True).to(device)
 # model = torchvision.models.resnet18().to(device)
-model.fc = nn.Linear(
-    model.fc.in_features,  num_classes).to(device)
+model.classifier = nn.Linear(
+    1024,  num_classes).to(device)
 criterion = nn.CrossEntropyLoss()
 
 # load the classifier's weigths
