@@ -9,12 +9,12 @@ from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
 from torchvision.models import GoogLeNet_Weights
 
-from datasets import GroceryStoreDataset01, collate_fn, TRANSFORM
+from datasets import GroceryStoreDataset01, collate_fn, TRAIN_TRANSFORM, TEST_TRANSFORM
 from tqdm import tqdm
 
 
-trainset = GroceryStoreDataset01(split='train', transform=TRANSFORM)
-valset = GroceryStoreDataset01(split='val', transform=TRANSFORM)
+trainset = GroceryStoreDataset01(split='train', transform=TRAIN_TRANSFORM)
+valset = GroceryStoreDataset01(split='val', transform=TEST_TRANSFORM)
 
 num_classes = len(trainset.classes)
 
@@ -24,18 +24,18 @@ valloader = DataLoader(valset, batch_size=32, shuffle=True, num_workers=6)
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 print(f'Running on {device}...')
-model = torchvision.models.resnet18(weights=torchvision.models.ResNet18_Weights.DEFAULT).to(device)
+model = torchvision.models.densenet121(pretrained=True).to(device)
 
 # model = torchvision.models.resnet18().to(device)
-model.fc = nn.Linear(
-    model.fc.in_features,  num_classes).to(device)
+model.classifier = nn.Linear(
+    1024,  num_classes).to(device)
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
-scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=10)
+optimizer = optim.Adamax(model.parameters(), lr=1e-3)
+scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.01, patience=3, verbose=True)
 
-if os.path.exists('classifier.pth'):
-    model.load_state_dict(torch.load('classifier.pth'))
-epochs = 50
+'''if os.path.exists('classifier.pth'):
+    model.load_state_dict(torch.load('classifier.pth'))'''
+epochs = 10
 
 print('''
 #################################################################
@@ -63,7 +63,7 @@ for epoch in range(epochs):
         loss = criterion(outputs, labels)
         loss.backward()
         optimizer.step()
-        scheduler.step()
+        
         running_loss += loss.item()
 
         pbar.set_postfix({'loss': running_loss / (i + 1), 'val_accuracy': acc})
@@ -94,6 +94,7 @@ for epoch in range(epochs):
         val_losses.append(val_loss)
     
     model.train()
+    scheduler.step(val_loss)
    
 
 print(''''
@@ -113,6 +114,7 @@ print('''
 #                                                               #                 
 #################################################################
       ''')
+x = np.linspace(0, 50, 50)
 fig, ax = plt.subplots()
 ax.plot(x, losses, label="training loss")
 ax.plot(x, val_losses, label="validation loss")

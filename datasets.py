@@ -21,21 +21,25 @@ import matplotlib.pyplot as plt
 mean = (0.485, 0.456, 0.406)
 std = (0.229, 0.224, 0.225)
 # Define transforms
-TRANSFORM = transforms.Compose([
+TRAIN_TRANSFORM = transforms.Compose([
     transforms.Resize((256,256)),  # resize the image to 256x256 pixels
     transforms.CenterCrop((224, 224)),
-    transforms.ToTensor(),  # convert the image to a PyTorch tensor
-    #transforms.Normalize(mean=mean, std=std),  # normalize the image
+    
     transforms.GaussianBlur(kernel_size=(5, 5)),
     transforms.RandomHorizontalFlip(p=0.5),  #
     #transforms.RandomVerticalFlip(0.4),
-    
     transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.025),
-
+    transforms.ToTensor(),  # convert the image to a PyTorch tensor
+    transforms.Normalize(mean=mean, std=std)  # normalize the image
     # see https://pytorch.org/docs/stable/torchvision/transforms.html for more transforms
     #
 ])
-
+TEST_TRANSFORM = transforms.Compose([
+    transforms.Resize((256,256)),  # resize the image to 256x256 pixels
+    transforms.CenterCrop((224, 224)),
+    transforms.ToTensor(),  # convert the image to a PyTorch tensor
+    transforms.Normalize(mean=mean, std=std)  # normalize the image
+])
 
 class GroceryStoreDataset01(Dataset):
     # directory structure:
