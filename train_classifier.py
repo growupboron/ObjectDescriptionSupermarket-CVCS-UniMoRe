@@ -33,8 +33,8 @@ criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adamax(model.parameters(), lr=1e-3)
 scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.01, patience=3, verbose=True)
 
-'''if os.path.exists('classifier.pth'):
-    model.load_state_dict(torch.load('classifier.pth'))'''
+if os.path.exists('classifier.pth'):
+    model.load_state_dict(torch.load('classifier.pth'))
 epochs = 10
 
 print('''
@@ -114,7 +114,7 @@ print('''
 #                                                               #                 
 #################################################################
       ''')
-x = np.linspace(0, 50, 50)
+x = np.linspace(0, epochs, epochs)
 fig, ax = plt.subplots()
 ax.plot(x, losses, label="training loss")
 ax.plot(x, val_losses, label="validation loss")
