@@ -1,0 +1,9 @@
+path: /Users/miche/PycharmProjects/ObjectDescriptionSupermarket-CVCS-UniMoRe/Datasets/Supermarket+shelves/Supermarket shelves/Supermarket shelves/
+
+train : images
+val: images
+
+#classes
+names:
+    0: Price
+    1: Product
