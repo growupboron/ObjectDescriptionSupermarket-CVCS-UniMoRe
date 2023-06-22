@@ -16,6 +16,7 @@ import torch.optim as optim
 
 import torchvision.transforms as transforms
 import matplotlib.pyplot as plt
+import pandas as pd
 
 # create a custom dataset class for each dataset
 mean = (0.485, 0.456, 0.406)
@@ -24,7 +25,7 @@ std = (0.229, 0.224, 0.225)
 TRAIN_TRANSFORM = transforms.Compose([
     transforms.Resize((256,256)),  # resize the image to 256x256 pixels
     transforms.CenterCrop((224, 224)),
-    
+
     transforms.GaussianBlur(kernel_size=(5, 5)),
     transforms.RandomHorizontalFlip(p=0.5),  #
     #transforms.RandomVerticalFlip(0.4),
@@ -231,3 +232,42 @@ def pad_labels(labels, max_num_boxes):
     while len(labels) < max_num_boxes:
         labels.append(0)
     return labels
+
+
+
+
+class SKUDataset(Dataset):
+    def __init__(self, split, transform=None):
+        self.root_dir = '/work/cvcs_2023_group23/SKU110K_fixed'
+        self.images_dir = os.path.join(self.root_dir, 'images')
+        self.annotations_dir = os.path.join(self.root_dir, 'annotations')
+        self.split = split
+        self.transform = transform
+
+        # Load annotations CSV file
+        annotations_file = os.path.join(self.annotations_dir, f'annotations_{self.split}.csv')
+        self.annotations_df = pd.read_csv(annotations_file)
+
+    def __len__(self):
+        return len(self.annotations_df)
+
+    def __getitem__(self, idx):
+        row = self.annotations_df.iloc[idx]
+        img_name = row['image_name']
+        x1 = row['x1']
+        y1 = row['y1']
+        x2 = row['x2']
+        y2 = row['y2']
+        class_id = row['class']
+        image_width = row['image_width']
+        image_height = row['image_height']
+
+        # Load image
+        img_path = os.path.join(self.images_dir, img_name)
+        image = Image.open(img_path).convert('RGB')
+
+        # Apply transformation if available
+        if self.transform:
+            image = self.transform(image)
+
+        return image, x1, y1, x2, y2, class_id, image_width, image_height
