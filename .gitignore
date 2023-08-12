@@ -1,0 +1,5 @@
+./Datasets
+./yolov5
+./vscode
+./*.pth
+./session_name.txt
