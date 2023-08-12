@@ -25,8 +25,10 @@ mean = (0.485, 0.456, 0.406)
 std = (0.229, 0.224, 0.225)
 # Define transforms
 TRAIN_TRANSFORM = transforms.Compose([
+
     transforms.Resize((320, 320)),  # resize the image to 256x256 pixels
     transforms.CenterCrop((320, 320)),
+
 
     transforms.GaussianBlur(kernel_size=(5, 5)),
     transforms.RandomHorizontalFlip(p=0.5),  #
@@ -38,8 +40,10 @@ TRAIN_TRANSFORM = transforms.Compose([
     #
 ])
 TEST_TRANSFORM = transforms.Compose([
+
     transforms.Resize((320, 320)),  # resize the image to 256x256 pixels
     transforms.CenterCrop((320, 320)),
+
     transforms.ToTensor(),  # convert the image to a PyTorch tensor
     transforms.Normalize(mean=mean, std=std)  # normalize the image
 ])
@@ -175,6 +179,46 @@ class ShelvesDataset(Dataset):
         self.transform = transform
         self.num_files = len(os.listdir(os.path.join(self.root, "images")))
         self.max_num_boxes = max_num_boxes
+        # self.setup_labels()
+        # self.normalize_annotations()
+
+    def setup_labels(self):
+        # for each image name, get the corresponding json file and generate a txt file with the following format:
+        # class_id(0 or 1), x1, y1, x2, y2
+        # where x1, y1, x2, y2 are the coordinates of the bounding box
+
+        # get the list of image names
+        img_path = os.path.join(self.root, "images")
+        img_filenames = os.listdir(img_path)
+        # get the list of json filenames
+        annotation_path = os.path.join(self.root, "annotations")
+        annotation_filenames = os.listdir(annotation_path)
+
+        for img_filename in img_filenames:
+            # get the corresponding json filename
+            annotation_filename = img_filename + ".json"
+            # open the json file
+            with open(os.path.join(annotation_path, annotation_filename)) as f:
+                annotations = json.load(f)
+
+            # create a new txt file
+            txt_filename = img_filename[:-3] + "txt"
+            with open(os.path.join(annotation_path.replace("annotations", "labels"), txt_filename), "w") as f:
+                # for each object in the image
+                # get width and height of the image
+                width = int(annotations["size"]["width"])
+                height = int(annotations["size"]["height"])
+                for obj in annotations["objects"]:
+                    # get the class id
+                    class_id = 1 if obj["classTitle"] == "product" else 0
+                    # get the bounding box coordinates
+                    x1 = float(obj["points"]["exterior"][0][0])
+                    y1 = float(obj["points"]["exterior"][0][1])
+                    x2 = float(obj["points"]["exterior"][1][0]) - x1
+                    y2 = float(obj["points"]["exterior"][1][1]) - y1
+                    # write the line in the txt file
+                    f.write(f"{class_id} {x1/width} {y1/height} {x2/width} {y2/height}\n")
+
 
     def __len__(self):
         return self.num_files
@@ -183,8 +227,9 @@ class ShelvesDataset(Dataset):
         torch.random.manual_seed(0)
         img_path = os.path.join(self.root, "images")
         img_filename = os.listdir(img_path)[idx]
-        ret = [{'boxes': None, 'labels': [], 'image_id': torch.tensor([int(img_filename[:3])]), 'area': torch.tensor([4000 * 4000]),
-                 'iscrowd': torch.tensor([[0, 0]])}]
+        ret = [{'boxes': None, 'labels': [], 'image_id': torch.tensor([int(img_filename[:3])]),
+                'area': torch.tensor([4000 * 4000]),
+                'iscrowd': torch.tensor([[0, 0]])}]
         annotation_path = os.path.join(self.root, "annotations")
         annotation_filename = os.listdir(annotation_path)[idx]
 
@@ -219,6 +264,25 @@ class ShelvesDataset(Dataset):
         ret[0]['labels'] = torch.tensor(labels)
         return img, ret
 
+    def normalize_annotations(self):
+        # divide the xyxy coordinates by the image width and height
+        annotation_path = os.path.join(self.root, "labels")
+        annotation_filenames = os.listdir(annotation_path)
+
+
+        for annotation_filename in annotation_filenames:
+            with open(os.path.join(annotation_path, annotation_filename)) as f:
+                lines = f.readlines()
+            with open(os.path.join(annotation_path, annotation_filename), "w") as f:
+                height, width = Image.open(os.path.join(self.root, "images", annotation_filename[:-3] + "jpg")).size
+                for line in lines:
+                    class_id, x1, y1, x2, y2 = line.strip().split()
+                    '''x1 = float(x1) / width
+                    y1 = float(y1) / height
+                    x2 = float(abs(x1 - int(x2))) / width
+                    y2 = float(abs(y1 - int(y2))) / height
+                    f.write(f"{class_id} {x1} {y1} {x2} {y2}\n")'''
+                    print(x1, y1, x2, y2)
 
 def pad_boxes(boxes_list, pad_length):
     # pad the list with zeros if its length is less than the pad_length
