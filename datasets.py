@@ -2,9 +2,10 @@
 import ast
 import json
 import os
-
+import yaml
 import numpy as np
 from PIL import Image
+import threading
 import torch
 from PIL import ImageDraw
 from torch.utils.data import Dataset, DataLoader
@@ -15,6 +16,7 @@ import torch.nn as nn
 import torch.optim as optim
 
 import torchvision.transforms as transforms
+from torchvision.transforms import ToTensor
 import matplotlib.pyplot as plt
 import pandas as pd
 
@@ -23,12 +25,12 @@ mean = (0.485, 0.456, 0.406)
 std = (0.229, 0.224, 0.225)
 # Define transforms
 TRAIN_TRANSFORM = transforms.Compose([
-    transforms.Resize((256,256)),  # resize the image to 256x256 pixels
-    transforms.CenterCrop((224, 224)),
+    transforms.Resize((320, 320)),  # resize the image to 256x256 pixels
+    transforms.CenterCrop((320, 320)),
 
     transforms.GaussianBlur(kernel_size=(5, 5)),
     transforms.RandomHorizontalFlip(p=0.5),  #
-    #transforms.RandomVerticalFlip(0.4),
+    # transforms.RandomVerticalFlip(0.4),
     transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.025),
     transforms.ToTensor(),  # convert the image to a PyTorch tensor
     transforms.Normalize(mean=mean, std=std)  # normalize the image
@@ -36,13 +38,15 @@ TRAIN_TRANSFORM = transforms.Compose([
     #
 ])
 TEST_TRANSFORM = transforms.Compose([
-    transforms.Resize((256,256)),  # resize the image to 256x256 pixels
-    transforms.CenterCrop((224, 224)),
+    transforms.Resize((320, 320)),  # resize the image to 256x256 pixels
+    transforms.CenterCrop((320, 320)),
     transforms.ToTensor(),  # convert the image to a PyTorch tensor
     transforms.Normalize(mean=mean, std=std)  # normalize the image
 ])
 
+
 class GroceryStoreDataset01(Dataset):
+
     # directory structure:
     # - root/[train/test/val]/[vegetable/fruit/packages]/[vegetables/fruit/packages]_class/[vegetables/fruit/packages]_subclass/[vegetables/fruit/packages]_image.jpg
     # - root/classes.csv
@@ -216,7 +220,6 @@ class ShelvesDataset(Dataset):
         return img, ret
 
 
-
 def pad_boxes(boxes_list, pad_length):
     # pad the list with zeros if its length is less than the pad_length
     if len(boxes_list) < pad_length:
@@ -234,9 +237,8 @@ def pad_labels(labels, max_num_boxes):
     return labels
 
 
-
-
 class SKUDataset(Dataset):
+
     def __init__(self, split, transform=None):
         self.root_dir = '/work/cvcs_2023_group23/SKU110K_fixed'
         self.images_dir = os.path.join(self.root_dir, 'images')
@@ -246,28 +248,257 @@ class SKUDataset(Dataset):
 
         # Load annotations CSV file
         annotations_file = os.path.join(self.annotations_dir, f'annotations_{self.split}.csv')
-        self.annotations_df = pd.read_csv(annotations_file)
+        self.annotations_df = pd.read_csv(annotations_file, header=None).dropna()
 
     def __len__(self):
         return len(self.annotations_df)
 
     def __getitem__(self, idx):
         row = self.annotations_df.iloc[idx]
-        img_name = row['image_name']
-        x1 = row['x1']
-        y1 = row['y1']
-        x2 = row['x2']
-        y2 = row['y2']
-        class_id = row['class']
-        image_width = row['image_width']
-        image_height = row['image_height']
-
+        img_name = row[0]
+        x1 = row[1]
+        y1 = row[2]
+        x2 = row[3]
+        y2 = row[4]
+        class_id = row[5]  # string type, can't covert to integer 
+        image_width = row[6]
+        image_height = row[7]
+        
+        class_id = 0 if class_id == "object" else 1
         # Load image
         img_path = os.path.join(self.images_dir, img_name)
-        image = Image.open(img_path).convert('RGB')
+        try:
+            image = Image.open(img_path).convert('RGB')
+        except (OSError, IOError) as e:
+            print(f"Error loading image {img_path}: {e}")
+            # You can choose to return a placeholder image or any other action
+            # For example, return a blank image:
+            image = Image.new('RGB', (image_width, image_height), (0, 0, 0))
+            error_log_path = 'corrupted_images.log'
+            with open(error_log_path, 'a') as f:
+                f.write(f"Corrupted image: {img_path}\n")
 
         # Apply transformation if available
         if self.transform:
             image = self.transform(image)
 
         return image, x1, y1, x2, y2, class_id, image_width, image_height
+
+####################################################################################
+#                                                                                  #
+#          VERSION WITH:                                                           #
+#                  -  BETTER CORRUPTION HANDLING                                   #
+#                  -  BETTER SETUP WITH CONFIG FILES                               #
+#                  -  STILL REQUIRES TESTING AND A PROPER SETUP(GIST)              #
+#                                                                                  #
+####################################################################################
+
+
+""" class SKUDataset(Dataset):
+    
+    
+    def __init__(self, config_path):
+        self.load_config(config_path)
+
+        # Derived from root directory in config
+        self.images_dir = os.path.join(self.root_dir, 'images')
+        self.annotations_dir = os.path.join(self.root_dir, 'annotations')
+
+        # Load annotations from annotations directory specified in config
+        annotations_file = os.path.join(self.annotations_dir, f'annotations_{self.split}.csv')
+        self.annotations_df = pd.read_csv(annotations_file, header=None).dropna()
+
+        self.good_image_indices = set()
+        self.load_good_indices_from_cloud()  # Load good indices from cloud
+
+    def load_config(self, config_path):
+        with open(config_path, 'r') as config_file:
+            config = yaml.safe_load(config_file)
+            self.github_token = config['github_token']
+            self.gist_id = config['gist_id']
+            self.root_dir = config['root_dir']
+            self.split = config['split']
+
+    def save_good_indices_to_cloud(self):
+        # Save the set of good indices to GitHub Gist
+        gist_content = ",".join(str(idx) for idx in self.good_image_indices)
+        gist_url = f'https://api.github.com/gists/{self.gist_id}'
+        headers = {"Authorization": f"token {self.github_token}"}
+        data = {"files": {"good_indices.txt": {"content": gist_content}}}
+        response = requests.patch(gist_url, json=data, headers=headers)
+
+    def load_good_indices_from_cloud(self):
+        # Load the set of good indices from GitHub Gist
+        gist_url = f'https://api.github.com/gists/{self.gist_id}'
+        response = requests.get(gist_url)
+        if response.status_code == 200:
+            gist_data = response.json()
+            if "files" in gist_data and "good_indices.txt" in gist_data["files"]:
+                good_indices_str = gist_data["files"]["good_indices.txt"]["content"]
+                self.good_image_indices = set(int(idx) for idx in good_indices_str.split(','))
+
+    def __len__(self):
+        return len(self.annotations_df)
+
+    def __getitem__(self, idx):
+        row = self.annotations_df.iloc[idx]
+        img_name = row[0]
+        x1 = row[1]
+        y1 = row[2]
+        x2 = row[3]
+        y2 = row[4]
+        class_id = row[5]
+        image_width = row[6]
+        image_height = row[7]
+
+        class_id = 0 if class_id == "object" else 1
+        
+        img_path = os.path.join(self.images_dir, img_name)
+        try:
+            image = Image.open(img_path).convert('RGB')
+            self.good_image_indices.add(idx)  # Add index to the set of good indexes
+        except (OSError, IOError) as e:
+            print(f"Error loading image {img_path}: {e}")
+            error_log_path = 'corrupted_images.log'
+            with open(error_log_path, 'a') as f:
+                f.write(f"Corrupted image: {img_path}\n")
+
+            # Replace with a good image
+            if self.good_image_indices:
+                good_index = random.choice(list(self.good_image_indices))
+                good_row = self.annotations_df.iloc[good_index]
+                good_img_name = good_row[0]
+                good_img_path = os.path.join(self.images_dir, good_img_name)
+                try:
+                    good_image = Image.open(good_img_path).convert('RGB')
+                    image = good_image
+                except (OSError, IOError) as e:
+                    print(f"Unexpected error loading good image {good_img_path}: {e}")
+                    # As a last resort, use a blank image.
+                    image = Image.new('RGB', (image_width, image_height), (0, 0, 0))
+                    
+        # Save good indices to the cloud after each replacement
+        self.save_good_indices_to_cloud()
+
+        return image, x1, y1, x2, y2, class_id, image_width, image_height
+
+"""
+
+# class SKUDatasetGPU(Dataset):
+#     def __init__(self, split, transform=None):
+#         self.root_dir = '/work/cvcs_2023_group23/SKU110K_fixed'
+#         self.images_dir = os.path.join(self.root_dir, 'images')
+#         self.annotations_dir = os.path.join(self.root_dir, 'annotations')
+#         self.split = split
+#         self.transform = transform
+
+#         # Load annotations CSV file
+#         annotations_file = os.path.join(self.annotations_dir, f'annotations_{self.split}.csv')
+#         self.annotations_df = pd.read_csv(annotations_file, header=None)
+
+#     def __len__(self):
+#         return len(self.annotations_df)
+#     def classes(self):
+#         return self.annotations_df.iloc[:,5].unique()
+#     def num_classes(self):
+#         return self.classes().shape[0]
+
+#     def __getitem__(self, idx):
+#         row = self.annotations_df.iloc[idx]
+#         img_name = row[0]
+#         x1 = row[1]
+#         y1 = row[2]
+#         x2 = row[3]
+#         y2 = row[4]
+#         class_id = row[5]
+#         image_width = row[6]
+#         image_height = row[7]
+
+#         try:
+#             class_id = int(class_id)  # Convert class_id to an integer
+#         except ValueError:
+#             # Handle erroneous data, such as setting a default value or skipping the sample
+#             class_id = -1  # Set a default value for class_id
+
+#         # Load image
+#         img_path = os.path.join(self.images_dir, img_name)
+#         image = Image.open(img_path).convert('RGB')
+
+#         # Apply transformation if available
+#         if self.transform:
+#             image = self.transform(image)
+
+#         targets = {}
+        
+#         targets['boxes'] = torch.tensor([[x1, y1, x2, y2]], dtype=torch.float32) if class_id != -1 else torch.tensor(list())
+#         targets['labels'] = torch.tensor([class_id], dtype=torch.int64) if class_id != -1 else torch.tensor(list())
+
+#         return image, targets
+
+
+class SKUDatasetGPU(Dataset):
+
+    def __init__(self, split, transform=None):
+        self.root_dir = '/work/cvcs_2023_group23/SKU110K_fixed'
+        self.images_dir = os.path.join(self.root_dir, 'images')
+        self.annotations_dir = os.path.join(self.root_dir, 'annotations')
+        self.split = split
+        self.transform = transform
+
+        # Load annotations CSV file
+        annotations_file = os.path.join(self.annotations_dir, f'annotations_{self.split}.csv')
+        self.annotations_df = pd.read_csv(annotations_file, header=None)
+
+        self.image_lock = threading.Lock()  # Add the lock
+
+    def __len__(self):
+        return len(self.annotations_df)
+    
+    def classes(self):
+        return self.annotations_df.iloc[:, 5].unique()
+    
+    def num_classes(self):
+        return self.classes().shape[0]
+
+    def __getitem__(self, idx):
+        row = self.annotations_df.iloc[idx]
+        img_name = row[0]
+        x1 = row[1]
+        y1 = row[2]
+        x2 = row[3]
+        y2 = row[4]
+        class_id = row[5]
+        image_width = row[6]
+        image_height = row[7]
+
+        try:
+            class_id = int(class_id)  # Convert class_id to an integer
+        except ValueError:
+            class_id = -1  # Set a default value for class_id
+
+        # Load image
+        img_path = os.path.join(self.images_dir, img_name)
+        
+        with self.image_lock:  # Use the lock around image loading
+            try:
+                image = Image.open(img_path).convert('RGB')
+            except Exception as e:
+                print(f"Error loading image {img_path}: {e}")
+                # Return a placeholder image and targets
+                image = Image.new('RGB', (256, 256))  # Create a placeholder image
+                targets = {'boxes': torch.tensor([], dtype=torch.float32), 'labels': torch.tensor([], dtype=torch.int64)}
+                return image, targets
+
+        # Apply transformation if available
+        if self.transform:
+            image = self.transform(image)
+
+        boxes = torch.tensor([[x1, y1, x2, y2]], dtype=torch.float32) if class_id != -1 else torch.tensor([])
+        labels = torch.tensor([class_id], dtype=torch.int64) if class_id != -1 else torch.tensor([])
+
+        targets = {'boxes': boxes, 'labels': labels}
+
+        # print(f"Image shape: {image.shape}")
+        # print(f"Targets: {targets}")    
+        
+        return image, targets
