@@ -1,11 +1,36 @@
 import torch
+import torch.backends.cudnn as cudnn
 import time
+from tqdm import tqdm,trange
 from torchvision.models.detection import ssdlite320_mobilenet_v3_large
 from torch.nn import SmoothL1Loss
 from torch.optim import SGD
+import logging
+from colorlog import ColoredFormatter
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader
 from datasets import SKUDataset, TEST_TRANSFORM, TRAIN_TRANSFORM
+
+""" 
+# Configure the logger
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+# Create console handler and set level to debug
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+
+# Create a color formatter
+formatter = ColoredFormatter('%(log_color)s%(asctime)s - %(levelname)s - %(message)s%(reset)s')
+
+# Set the formatter for the console handler
+console_handler.setFormatter(formatter)
+
+# Add the console handler to the logger
+logger.addHandler(console_handler)
+tqdm.set_lock(logging.getLogger().handlers[0].lock)
+tqdm.set_logger(logging.getLogger(__name__)) 
+"""
 
 # Create an instance of the SKU110K dataset
 train_dataset = SKUDataset(split='train', transform=TRAIN_TRANSFORM)
@@ -13,14 +38,15 @@ val_dataset = SKUDataset(split='val', transform=TEST_TRANSFORM)
 
 
 # Create data loaders for training and validation
-train_dataloader = DataLoader(train_dataset, batch_size=8, shuffle=True, num_workers=2)
-val_dataloader = DataLoader(val_dataset, batch_size=4, shuffle=False, num_workers=2)
+train_dataloader = DataLoader(train_dataset, batch_size=64, shuffle=True, num_workers=4)
+val_dataloader = DataLoader(val_dataset, batch_size=32, shuffle=False, num_workers=4)
 
 # Define the model architecture (SSD)
 model = ssdlite320_mobilenet_v3_large(pretrained=False)
 
 # Move the model to the device
 device = torch.device("cuda")
+cudnn.benchmark = True
 #device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 #device = torch.device("cpu")
 model.to(device)
@@ -33,11 +59,14 @@ lr_scheduler = StepLR(optimizer, step_size=5, gamma=0.1)
 criterion = SmoothL1Loss()
 
 # Training loop
-num_epochs = 10
+print("***************************** TRAINING STARTED! *****************************\n")
+num_epochs = 5
+total_train_loss = 0.0
 for epoch in range(num_epochs):
     model.train()
     start_time = time.time()  # Start time for epoch
-    for images, x1, y1, x2, y2, class_id, image_width, image_height in train_dataloader:
+    train_progress = tqdm(train_dataloader, desc=f'Epoch [{epoch+1}/{num_epochs}]', leave=False)
+    for batch_idx, (images, x1, y1, x2, y2, class_id, image_width, image_height) in enumerate(train_progress):
         # Move images and targets to the device
         images = images.to(device)
         x1 = x1.to(device)
@@ -62,7 +91,7 @@ for epoch in range(num_epochs):
         outputs = model(images, targets)
 
         # Print the outputs dictionary
-        print(outputs)
+        # print(outputs)
 
         # Check if 'bbox_regression' and 'classification' keys exist in outputs dictionary
         if 'bbox_regression' in outputs and 'classification' in outputs:
@@ -81,10 +110,14 @@ for epoch in range(num_epochs):
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
+        total_train_loss += loss.item()
+        train_progress.set_postfix({'Loss': total_train_loss / (batch_idx + 1)})
 
     # Validation
     model.eval()
-    for images, x1, y1, x2, y2, class_id, image_width, image_height in val_dataloader:
+    total_val_loss = 0.0
+    val_progress = tqdm(val_dataloader, desc='Validation', leave=False)
+    for batch_idx, (images, x1, y1, x2, y2, class_id, image_width, image_height) in enumerate(val_progress):
         # Move images and targets to the device
         images = images.to(device)
         x1 = x1.to(device)
@@ -122,6 +155,9 @@ for epoch in range(num_epochs):
         loss = criterion(output_boxes, target_boxes) + criterion(output_labels, target_labels)
 
         # Compute validation loss or other metrics
+        total_val_loss += loss.item()
+        val_progress.set_postfix({'Validation Loss': total_val_loss / (batch_idx + 1)})
+
 
     # Adjust learning rate
     lr_scheduler.step()
@@ -130,7 +166,10 @@ for epoch in range(num_epochs):
     epoch_time = time.time() - start_time
 
     # Print epoch statistics
-    print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.4f}, Time: {epoch_time:.2f} seconds')
+    print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {total_train_loss / len(train_dataloader):.4f}, '
+          f'Validation Loss: {total_val_loss / len(val_dataloader):.4f}, Time: {epoch_time:.2f} seconds')
 
 # Save the trained model
 torch.save(model.state_dict(), 'ssd_OD.pth')
+
+print("***************************** TRAINING ENDED! *****************************\n")
