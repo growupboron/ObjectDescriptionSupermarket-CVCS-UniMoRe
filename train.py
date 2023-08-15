@@ -1,148 +1,206 @@
+import os
+import argparse
+import logging
 import time
+import torch
 import torch.backends.cudnn as cudnn
-import torch.optim
-import torch.utils.data
-from model import SSD300, MultiBoxLoss
-from datasets import SKUDataset, SKUDatasetGPU, TRAIN_TRANSFORM, TEST_TRANSFORM
-from utils import *
+from tqdm import tqdm
+from torch.optim import SGD
+from torch.optim.lr_scheduler import StepLR
+from torch.utils.data import DataLoader
+from torchvision.models.detection import ssdlite320_mobilenet_v3_large
+from torch.nn import SmoothL1Loss
+from torch.utils.tensorboard import SummaryWriter
+from datasets import SKUDataset, TEST_TRANSFORM, TRAIN_TRANSFORM
+import yaml
 
-# Model parameters
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+def setup_logging(log_dir, verbose):
+    log_format = "%(asctime)s - %(levelname)s - %(message)s"
+    logging.basicConfig(filename=os.path.join(log_dir, 'train.log'), level=logging.INFO if verbose else logging.WARNING, format=log_format)
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(logging.Formatter(log_format))
+    logging.getLogger().addHandler(console_handler)
 
-# Learning parameters
-checkpoint = None  # path to model checkpoint, None if none
-batch_size = 8  # batch size
-iterations = 120000  # number of iterations to train
-num_workers = 2  # number of workers for loading data in the DataLoader
-print_freq = 200  # print training status every __ batches
-lr = 1e-3  # learning rate
-decay_lr_at = [80000, 100000]  # decay learning rate after these many iterations
-decay_lr_to = 0.1  # decay learning rate to this fraction of the existing learning rate
-momentum = 0.9  # momentum
-weight_decay = 5e-4  # weight decay
 
-cudnn.benchmark = True
+def train(args, config):
+    # Data loading setup
+    train_dataset = SKUDataset(split='train', transform=TRAIN_TRANSFORM)
+    val_dataset = SKUDataset(split='val', transform=TEST_TRANSFORM)
+    train_dataloader = DataLoader(train_dataset, batch_size=config['training']['batch_size'], shuffle=True, num_workers=4)
+    val_dataloader = DataLoader(val_dataset, batch_size=32, shuffle=False, num_workers=4)
+    
+    # Model setup
+    model = ssdlite320_mobilenet_v3_large(pretrained=False)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)
+    optimizer = SGD(model.parameters(), lr=config['training']['learning_rate'], momentum=0.9, weight_decay=0.0005)
+    lr_scheduler = StepLR(optimizer, step_size=5, gamma=0.1)
+    criterion = SmoothL1Loss()
+
+    # Load checkpoint if available
+    start_epoch = 0
+    start_batch_idx = 0
+    total_train_loss = 0.0
+    if args.resume_checkpoint:
+        checkpoint = torch.load(args.resume_checkpoint)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        start_epoch = checkpoint['epoch'] + 1
+        start_batch_idx = checkpoint['batch_idx'] + 1
+        total_train_loss = checkpoint['total_train_loss']
+        logging.info(f"Resuming training from epoch {start_epoch}, batch {start_batch_idx}")
+
+    # Training loop
+    for epoch in range(start_epoch, config['training']['num_epochs']):
+       
+        model.train()
+        start_time = time.time()  # Start time for epoch
+        train_progress = tqdm(train_dataloader, desc=f'Epoch [{epoch+1}/{num_epochs}]', leave=False)
+        total_train_loss = 0.0
+        for batch_idx, (images, x1, y1, x2, y2, class_id, image_width, image_height) in enumerate(train_progress):
+            # Move images and targets to the device
+            images = images.to(device)
+            x1 = x1.to(device)
+            y1 = y1.to(device)
+            x2 = x2.to(device)
+            y2 = y2.to(device)
+            class_id = class_id.to(device)
+            image_width = image_width.to(device)
+            image_height = image_height.to(device)
+
+            # Create a list of target dictionaries
+            targets = []
+            for i in range(len(images)):
+                target = {}
+                target['boxes'] = torch.tensor([[x1[i], y1[i], x2[i], y2[i]]], dtype=torch.float32).to(device)
+                target['labels'] = torch.tensor([class_id[i]], dtype=torch.int64).to(device)
+                target['image_width'] = image_width[i].to(device)
+                target['image_height'] = image_height[i].to(device)
+                targets.append(target)
+
+            # Forward pass
+            outputs = model(images, targets)
+
+            # Print the outputs dictionary
+            # print(outputs)
+
+            # Check if 'bbox_regression' and 'classification' keys exist in outputs dictionary
+            if 'bbox_regression' in outputs and 'classification' in outputs:
+                output_boxes = outputs['bbox_regression']
+                output_labels = outputs['classification']
+            else:
+                raise KeyError("Keys 'bbox_regression' and 'classification' not found in outputs dictionary.")
+
+            # Extract tensors from targets list
+            target_boxes = torch.cat([target['boxes'] for target in targets])
+            target_labels = torch.cat([target['labels'] for target in targets])
+
+            loss = criterion(output_boxes, target_boxes) + criterion(output_labels, target_labels)
+
+            # Backward pass and optimization
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            
+            total_train_loss += loss.item()
+            train_progress.set_postfix({'Loss': total_train_loss / (batch_idx + 1)})
+
+        # Validation
+        model.eval()
+        total_val_loss = 0.0
+        val_progress = tqdm(val_dataloader, desc='Validation', leave=False)
+        for batch_idx, (images, x1, y1, x2, y2, class_id, image_width, image_height) in enumerate(val_progress):
+            # Move images and targets to the device
+            images = images.to(device)
+            x1 = x1.to(device)
+            y1 = y1.to(device)
+            x2 = x2.to(device)
+            y2 = y2.to(device)
+            class_id = (class_id - class_id.min()).to(device)
+            image_width = image_width.to(device)
+            image_height = image_height.to(device)
+
+            # Create a list of target dictionaries
+            targets = []
+            for i in range(len(images)):
+                target = {}
+                target['boxes'] = torch.tensor([[x1[i], y1[i], x2[i], y2[i]]], dtype=torch.float32).to(device)
+                target['labels'] = torch.tensor([class_id[i]], dtype=torch.int64).to(device)
+                target['image_width'] = image_width[i].to(device)
+                target['image_height'] = image_height[i].to(device)
+                targets.append(target)
+
+            # Forward pass
+            outputs = model(images, targets)
+
+            # Check if 'bbox_regression' and 'classification' keys exist in outputs dictionary
+            if 'bbox_regression' in outputs and 'classification' in outputs:
+                output_boxes = outputs['bbox_regression']
+                output_labels = outputs['classification']
+            else:
+                raise KeyError("Keys 'bbox_regression' and 'classification' not found in outputs dictionary.")
+
+            # Extract tensors from targets list
+            target_boxes = torch.cat([target['boxes'] for target in targets])
+            target_labels = torch.cat([target['labels'] for target in targets])
+
+            loss = criterion(output_boxes, target_boxes) + criterion(output_labels, target_labels)
+
+            # Compute validation loss or other metrics
+            total_val_loss += loss.item()
+            val_progress.set_postfix({'Validation Loss': total_val_loss / (batch_idx + 1)})
+
+        # Adjust learning rate
+        lr_scheduler.step()
+
+        # Calculate epoch duration
+        epoch_time = time.time() - start_time
+
+        # Print epoch statistics
+        print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {total_train_loss / len(train_dataloader):.4f}, '
+            f'Validation Loss: {total_val_loss / len(val_dataloader):.4f}, Time: {epoch_time:.2f} seconds')
+
+        # Save checkpoint after every epoch
+        checkpoint_path = os.path.join(config['logging']['log_dir'], 'checkpoint.pth')
+        torch.save({
+            'epoch': epoch,
+            'batch_idx': len(train_dataloader) - 1,  # Last batch index
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'total_train_loss': total_train_loss
+        }, checkpoint_path)
 
 
 def main():
-    """
-    Training.
-    """
-    global start_epoch, epoch, checkpoint, decay_lr_at
-    n_classes = len(label_map)
-    # Initialize model or load checkpoint
-    if checkpoint is None:
-        start_epoch = 0
-        model = SSD300(n_classes=n_classes)
-        # Initialize the optimizer, with twice the default learning rate for biases, as in the original Caffe repo
-        biases = list()
-        not_biases = list()
-        for param_name, param in model.named_parameters():
-            if param.requires_grad:
-                if param_name.endswith('.bias'):
-                    biases.append(param)
-                else:
-                    not_biases.append(param)
-        optimizer = torch.optim.SGD(params=[{'params': biases, 'lr': 2 * lr}, {'params': not_biases}],
-                                    lr=lr, momentum=momentum, weight_decay=weight_decay)
+    parser = argparse.ArgumentParser(description="SKU Training Script")
+    parser.add_argument("--config", required=True, help="Path to the YAML config file")
+    parser.add_argument("--resume_checkpoint", help="Path to checkpoint file to resume training")
+    parser.add_argument("--log_dir", required=True, help="Path to the log directory")
+    parser.add_argument("--batch_size", type=int, default=64, help="Batch size for training")
+    parser.add_argument("--learning_rate", type=float, default=0.001, help="Learning rate for training")
+    parser.add_argument("--num_epochs", type=int, default=5, help="Number of training epochs")
+    parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
+    args = parser.parse_args()
 
-    else:
-        checkpoint = torch.load(checkpoint)
-        start_epoch = checkpoint['epoch'] + 1
-        print('\nLoaded checkpoint from epoch %d.\n' % start_epoch)
-        model = checkpoint['model']
-        optimizer = checkpoint['optimizer']
+    # Load config file
+    with open(args.config, 'r') as config_file:
+        config = yaml.load(config_file, Loader=yaml.FullLoader)
 
-    # Move to default device
-    model = model.to(device)
-    criterion = MultiBoxLoss(priors_cxcy=model.priors_cxcy).to(device)
+    # Overwrite config with CLI arguments
+    config['logging']['log_dir'] = args.log_dir
+    config['training']['batch_size'] = args.batch_size
+    config['training']['learning_rate'] = args.learning_rate
+    config['training']['num_epochs'] = args.num_epochs
 
-    train_dataset = SKUDatasetGPU(split='train', transform=TRAIN_TRANSFORM)
-    val_dataset = SKUDatasetGPU(split='val', transform=TEST_TRANSFORM)
+    # Setup logging
+    setup_logging(config['logging']['log_dir'], args.verbose)
 
-    # Create data loaders for training and validation
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
-    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+    # Tensorboard setup
+    tensorboard_writer = SummaryWriter(config['logging']['log_dir'])
 
-# Calculate total number of epochs to train and the epochs to decay learning rate at (i.e. convert iterations to epochs)
-    # To convert iterations to epochs, divide iterations by the number of iterations per epoch
-   
-    epochs = iterations // (len(train_dataset) // 32)
-    decay_lr_at = [it // (len(train_dataset) // 32) for it in decay_lr_at]
-
-    # Epochs
-    for epoch in range(start_epoch, epochs):
-
-        # Decay learning rate at particular epochs
-        if epoch in decay_lr_at:
-            adjust_learning_rate(optimizer, decay_lr_to)
-
-        # One epoch's training
-        train(train_loader=train_loader,
-              model=model,
-              criterion=criterion,
-              optimizer=optimizer,
-              epoch=epoch)
-
-        # Save checkpoint
-        save_checkpoint(epoch, model, optimizer)
-
-
-def train(train_loader, model, criterion, optimizer, epoch):
-    """
-    One epoch's training.
-
-    :param train_loader: DataLoader for training data
-    :param model: model
-    :param criterion: MultiBox loss
-    :param optimizer: optimizer
-    :param epoch: epoch number
-    """
-    model.train()  # training mode enables dropout
-
-    batch_time = AverageMeter()  # forward prop. + back prop. time
-    data_time = AverageMeter()  # data loading time
-    losses = AverageMeter()  # loss
-
-    start = time.time()
-
-    # Batches
-    for i, (images,target) in enumerate(train_loader):
-        data_time.update(time.time() - start)
-
-        # Move to default device
-        images = images.to(device)  # (batch_size (N), 3, 300, 300)
-        boxes = [b.to(device) for b in target["boxes"]]
-        labels = [l.to(device) for l in target["labels"]]
-
-        # Forward prop.
-        predicted_locs, predicted_scores = model(images)  
-
-        # Loss
-        loss = criterion(predicted_locs, predicted_scores, boxes, labels)  # scalar
-
-        # Backward prop.
-        optimizer.zero_grad()
-        loss.backward()
-
-        # Update model
-        optimizer.step()
-
-        losses.update(loss.item(), images.size(0))
-        batch_time.update(time.time() - start)
-
-        start = time.time()
-
-        # Print status
-        if i % print_freq == 0:
-            print('Epoch: [{0}][{1}/{2}]\t'
-                  'Batch Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-                  'Data Time {data_time.val:.3f} ({data_time.avg:.3f})\t'
-                  'Loss {loss.val:.4f} ({loss.avg:.4f})\t'.format(epoch, i, len(train_loader),
-                                                                  batch_time=batch_time,
-                                                                  data_time=data_time, loss=losses))
-    del predicted_locs, predicted_scores, images, boxes, labels  # free some memory since their histories may be stored
+    # Training
+    train(args, config)
 
 
 if __name__ == '__main__':

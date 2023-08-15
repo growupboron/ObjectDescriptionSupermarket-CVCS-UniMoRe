@@ -5,8 +5,8 @@ from tqdm import tqdm,trange
 from torchvision.models.detection import ssdlite320_mobilenet_v3_large
 from torch.nn import SmoothL1Loss
 from torch.optim import SGD
-import logging
-from colorlog import ColoredFormatter
+# import logging
+# from colorlog import ColoredFormatter
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader
 from datasets import SKUDataset, TEST_TRANSFORM, TRAIN_TRANSFORM
@@ -61,11 +61,12 @@ criterion = SmoothL1Loss()
 # Training loop
 print("***************************** TRAINING STARTED! *****************************\n")
 num_epochs = 5
-total_train_loss = 0.0
+
 for epoch in range(num_epochs):
     model.train()
     start_time = time.time()  # Start time for epoch
     train_progress = tqdm(train_dataloader, desc=f'Epoch [{epoch+1}/{num_epochs}]', leave=False)
+    total_train_loss = 0.0
     for batch_idx, (images, x1, y1, x2, y2, class_id, image_width, image_height) in enumerate(train_progress):
         # Move images and targets to the device
         images = images.to(device)
@@ -110,6 +111,7 @@ for epoch in range(num_epochs):
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
+        
         total_train_loss += loss.item()
         train_progress.set_postfix({'Loss': total_train_loss / (batch_idx + 1)})
 
