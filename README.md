@@ -1,24 +1,21 @@
 # Object Description Supermarket
 <h2> CVCS course project </h2>
 
-If you want to check th results of the tes script, just run test_dataset.py script:
-```bash
-python test_classifier.py
-```
-If you have time to waste and want to train the model run:
-```bash
-python train_classifier.py
-```
-<h2> Dataset </h2>
 
-I have been creating the custom dataset classes for the following datasets:
-- Freiburg Groceries Dataset
-- GroceryStoreDataset
-- Shelves+Supermarket
+To train the  Object detection model run:
+```bash
+python3 train.py
+```
+Use option '--help' to see the required arguments.
 
-<h2> We need to</h2>
-- Upload the remaining datasets in the GitHub repository(SKU-110K)
-- Create the custom dataset classes for the remaining datasets
-- Testing
-- Maybe start working on the object detection part
+<h2> Datasets </h2>
+- For the Object Detection task we use the SKU110 dataset, a large collection of images of shelves with the corresponding annotations.
+- For the classification task we mainly use two datasets:
+    - Freiburg Groceries Dataset
+    - GroceryStoreDataset
+
+<h2> Visualization </h2>
+
+Follow the guide here https://tensorboard.dev/#get-started to visualize preliminary results.
+(More to come)
 
