@@ -50,9 +50,10 @@ def train(args, config):
         start_batch_idx = checkpoint['batch_idx'] + 1
         total_train_loss = checkpoint['total_train_loss']
         logging.info(f"Resuming training from epoch {start_epoch}, batch {start_batch_idx}")
-
+        
+    num_epochs = config['training']['num_epochs']
     # Training loop
-    for epoch in range(start_epoch, config['training']['num_epochs']):
+    for epoch in range(start_epoch, num_epochs):
        
         model.train()
         start_time = time.time()  # Start time for epoch

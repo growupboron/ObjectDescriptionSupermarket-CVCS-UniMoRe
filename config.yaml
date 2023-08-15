@@ -1,14 +1,13 @@
-path: /Users/miche/PycharmProjects/ObjectDescriptionSupermarket-CVCS-UniMoRe/Datasets/Supermarket+shelves/Supermarket shelves/Supermarket shelves/
 
 logging:
-    log_dir: "/path/to/log/directory"
+    log_dir: "./logs"
     verbose: True
 
 training:
     batch_size: 64
     learning_rate: 0.001
     num_epochs: 5
-    
+
 train : images
 val: images
 
