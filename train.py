@@ -14,6 +14,7 @@ from torch.utils.tensorboard import SummaryWriter
 from datasets import SKUDataset, TEST_TRANSFORM, TRAIN_TRANSFORM
 import yaml
 
+cudnn.benchmark = True
 
 def setup_logging(log_dir, verbose):
     log_format = "%(asctime)s - %(levelname)s - %(message)s"
@@ -105,7 +106,9 @@ def train(args, config):
             optimizer.step()
             
             total_train_loss += loss.item()
-            train_progress.set_postfix({'Loss': total_train_loss / (batch_idx + 1)})
+            train_loss = total_train_loss / (batch_idx + 1)
+            tensorboard_writer.add_scalar('Loss/Train', train_loss, epoch * len(train_dataloader) + batch_idx)
+            train_progress.set_postfix({'Loss': train_loss})
 
         # Validation
         model.eval()
@@ -150,7 +153,10 @@ def train(args, config):
 
             # Compute validation loss or other metrics
             total_val_loss += loss.item()
-            val_progress.set_postfix({'Validation Loss': total_val_loss / (batch_idx + 1)})
+            
+            val_loss = total_val_loss / (batch_idx + 1)
+            tensorboard_writer.add_scalar('Loss/Train', val_loss, epoch * len(val_dataloader) + batch_idx)
+            val_progress.set_postfix({'Loss': val_loss})
 
         # Adjust learning rate
         lr_scheduler.step()
@@ -159,7 +165,7 @@ def train(args, config):
         epoch_time = time.time() - start_time
 
         # Print epoch statistics
-        print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {total_train_loss / len(train_dataloader):.4f}, '
+        logging.info(f'Epoch [{epoch+1}/{num_epochs}], Loss: {total_train_loss / len(train_dataloader):.4f}, '
             f'Validation Loss: {total_val_loss / len(val_dataloader):.4f}, Time: {epoch_time:.2f} seconds')
 
         # Save checkpoint after every epoch
