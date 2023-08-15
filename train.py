@@ -24,7 +24,7 @@ def setup_logging(log_dir, verbose):
     logging.getLogger().addHandler(console_handler)
 
 
-def train(args, config):
+def train(args, config, tensorboard_writer):
     # Data loading setup
     train_dataset = SKUDataset(split='train', transform=TRAIN_TRANSFORM)
     val_dataset = SKUDataset(split='val', transform=TEST_TRANSFORM)
@@ -207,7 +207,7 @@ def main():
     tensorboard_writer = SummaryWriter(config['logging']['log_dir'])
 
     # Training
-    train(args, config)
+    train(args, config, tensorboard_writer=tensorboard_writer)
 
 
 if __name__ == '__main__':
