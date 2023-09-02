@@ -9,16 +9,19 @@ import torch.nn as nn
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader
-from torchvision.models.detection import ssdlite320_mobilenet_v3_large
-from torchvision.models.detection.ssdlite import SSDLiteClassificationHead
-from torchvision.models.detection import _utils as det_utils
+from torchvision.models.detection import fasterrcnn_resnet50_fpn
+from torchvision.models.detection import FasterRCNN
+from torchvision.transforms import functional as F
 from torch.nn import SmoothL1Loss
 from torch.utils.tensorboard import SummaryWriter
 from datasets import SKUDataset, TEST_TRANSFORM, TRAIN_TRANSFORM
+from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
+
 import yaml
 from functools import partial
 
-cudnn.benchmark = True
+cudnn.benchmark = False
+
 
 def setup_logging(log_dir, verbose):
     log_format = "%(asctime)s - %(levelname)s - %(message)s"
@@ -28,22 +31,23 @@ def setup_logging(log_dir, verbose):
     logging.getLogger().addHandler(console_handler)
 
 
+
 def train(args, config, tensorboard_writer):
     # Data loading setup
     train_dataset = SKUDataset(split='train', transform=TRAIN_TRANSFORM)
     val_dataset = SKUDataset(split='val', transform=TEST_TRANSFORM)
     train_dataloader = DataLoader(train_dataset, batch_size=config['training']['batch_size'], shuffle=True, num_workers=2)
-    val_dataloader = DataLoader(val_dataset, batch_size=config['training']['batch_size']//2, shuffle=True, num_workers=2)
+    val_dataloader = DataLoader(val_dataset, batch_size=config['training']['batch_size'] // 2, shuffle=True, num_workers=2)
     
     # Model setup
-    model = ssdlite320_mobilenet_v3_large(pretrained=True)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    
-    in_channels = det_utils.retrieve_out_channels(model.backbone, (320, 320))
-    num_anchors = model.anchor_generator.num_anchors_per_location()
-    norm_layer = partial(nn.BatchNorm2d, eps=0.001, momentum=0.03)
+    model = fasterrcnn_resnet50_fpn(pretrained=True)
+    num_classes = 2  # Object or background
 
-    model.head.classification_head = SSDLiteClassificationHead(in_channels, num_anchors, 2, norm_layer)
+    # Modify the model's output layer to match the number of classes
+    in_features = model.roi_heads.box_predictor.cls_score.in_features
+    model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
     
     optimizer = AdamW(model.parameters(), lr=config['training']['learning_rate'])
@@ -66,67 +70,37 @@ def train(args, config, tensorboard_writer):
     num_epochs = config['training']['num_epochs']
     # Training loop
     for epoch in range(start_epoch, num_epochs):
-       
         model.train()
         start_time = time.time()  # Start time for epoch
         train_progress = tqdm(train_dataloader, desc=f'Epoch [{epoch+1}/{num_epochs}]', leave=True)
         total_train_loss = 0.0
-        for batch_idx, (images, x1, y1, x2, y2, class_id, image_width, image_height) in enumerate(train_progress):
-            
+        for batch_idx, (images, x1, y1, x2, y2, class_ids, image_widths, image_heights) in enumerate(train_progress):
             # Move images and targets to the device
-            images = images.to(device)
-               
-            
+            images = list(image.to(device) for image in images)
             x1 = x1.to(device)
             y1 = y1.to(device)
             x2 = x2.to(device)
             y2 = y2.to(device)
-            class_id = (class_id - class_id.min()).to(device)
-            image_width = image_width.to(device)
-            image_height = image_height.to(device)
+            class_ids = class_ids.to(device)
+            image_widths = image_widths.to(device)
+            image_heights = image_heights.to(device)
             
             # Create a list of target dictionaries
             targets = []
             for i in range(len(images)):
                 target = {}
-                target['boxes'] = torch.ones((4, x1[i].shape[0]))
-                target["boxes"][0] = x1[i]
-                target["boxes"][1] = y1[i]
-                target["boxes"][2] = x2[i]
-                target["boxes"][3] = y2[i]
-                target["boxes"] = target["boxes"].T
-                target["boxes"] = target["boxes"].to(device)
-                
-                target['labels'] = class_id[i].to(device)
-                target['image_width'] = image_width[i].to(device)
-                target['image_height'] = image_height[i].to(device)
+                target["boxes"] = torch.stack((x1[i], y1[i], x2[i], y2[i]), dim=1).to(device)
+                target["labels"] = class_ids[i]
+                target["image_width"] = image_widths[i]
+                target["image_height"] = image_heights[i]
                 targets.append(target)
-        
                 
-            print(f'Train target shape: {targets[0]["boxes"].shape}')
-
             # Forward pass
-            outputs = model(images, targets)
-
-            print(f"train output: {outputs}")
+            loss_list = model(images, targets)
             
             
-            # Check if 'bbox_regression' and 'classification' keys exist in outputs dictionary
-            if 'bbox_regression' in outputs and 'classification' in outputs:
-                loss_output_boxes = outputs['bbox_regression']
-                loss_output_labels = outputs['classification']
-            else:
-                print("Error: Keys 'bbox_regression' and 'classification' not found in outputs dictionary.")
-                raise KeyError("Keys 'bbox_regression' and 'classification' not found in outputs dictionary.")
-            print(f'Train output shape: {loss_output_boxes.shape} {loss_output_labels.shape}')
-            # Extract tensors from targets list
-            target_boxes = torch.cat([target['boxes'] for target in targets])
-            target_labels = torch.cat([target['labels'] for target in targets])
-
-            # loss = criterion(output_boxes, target_boxes) + criterion(output_labels, target_labels)
+            loss = sum(l for l in loss_list.values())
             
-            # we prolly dont need to compute loss since it is computed inside the forward pass of the model
-            loss = loss_output_boxes + loss_output_labels
             # Backward pass and optimization
             optimizer.zero_grad()
             loss.backward()
@@ -141,71 +115,37 @@ def train(args, config, tensorboard_writer):
         model.eval()
         total_val_loss = 0.0
         val_progress = tqdm(val_dataloader, desc=f'Validation [{epoch+1}/{num_epochs}]', leave=True)
-        for batch_idx, (images, x1, y1, x2, y2, class_id, image_width, image_height) in enumerate(val_progress):
-    
-            # Move images and annotations to the device
-            images = images.to(device)
+        for batch_idx, (images, x1, y1, x2, y2, class_ids, image_widths, image_heights) in enumerate(val_progress):
+            # Move images and targets to the device
+            images = list(image.to(device) for image in images)
             x1 = x1.to(device)
             y1 = y1.to(device)
             x2 = x2.to(device)
             y2 = y2.to(device)
-            class_id = class_id.to(device)
-            image_width = image_width.to(device)
-            image_height = image_height.to(device)
+            class_ids = class_ids.to(device)
+            image_widths = image_widths.to(device)
+            image_heights = image_heights.to(device)
             
-
             # Create a list of target dictionaries
             targets = []
             for i in range(len(images)):
                 target = {}
-                target['boxes'] = torch.ones((4, x1[i].shape[0]))
-                target["boxes"][0] = x1[i]
-                target["boxes"][1] = y1[i]
-                target["boxes"][2] = x2[i]
-                target["boxes"][3] = y2[i]
-                target["boxes"] = target["boxes"].T
-                target["boxes"] = target["boxes"].to(device)
-                target['labels'] = class_id[i].to(device)
-                target['image_width'] = image_width[i].to(device)
-                target['image_height'] = image_height[i].to(device)
+                target["boxes"] = torch.stack((x1[i], y1[i], x2[i], y2[i]), dim=1).to(device)
+                target["labels"] = class_ids[i]
+                target["image_width"] = image_widths[i]
+                target["image_height"] = image_heights[i]
                 targets.append(target)
-
+            
             # Forward pass
-            outputs = model(images)
-            # print(outputs)
-
-            # Check if 'boxes' and 'classification' keys exist in outputs dictionary
-            if outputs and 'boxes' in outputs[0] and 'labels' in outputs[0]:
-                output_boxes = torch.cat([output['boxes'] for output in outputs])
-                output_labels = torch.cat([output['labels'] for output in outputs])
-            else:
-                print(outputs)
-                print("Error: Keys 'boxes' and 'labels' not found in outputs dictionary.")
-                raise KeyError("Keys 'boxes' and 'labels' not found in outputs dictionary.")
-
-            # Extract tensors from targets list
-            target_boxes = torch.cat([target['boxes'] for target in targets])
-            target_labels = torch.cat([target['labels'] for target in targets])
-            print(f"Validation shapes: {output_boxes.shape} {target_boxes.shape}")
+            with torch.no_grad():
+                outputs = model(images)
             
-            # Adjust tensors shapes if needed
-            if target_boxes.shape[0] < output_boxes.shape[0]:
-                # Extract the first target_boxes.shape[0] elements from output_boxes and output_labels
-                output_boxes = output_boxes[:target_boxes.shape[0], :]
-                output_labels = output_labels[:target_labels.shape[0]]
-                
-            elif target_boxes.shape[0] > output_boxes.shape[0]:
-                # Extract the first output_boxes.shape[0] elements from target_boxes and target_labels
-                target_boxes = target_boxes[:output_boxes.shape[0], :]
-                target_labels = target_labels[:output_labels.shape[0]]
-
+            # Calculate loss
+            model.train()
+            loss_dict = model(images, targets)
+            loss = sum(l for l in loss_dict.values())
+            model.eval()
             
-            print(f"Validation shapes matched: {output_boxes.shape} {target_boxes.shape}")
-            output_labels = output_labels.float()  # Convert to float tensor
-            target_labels = target_labels.float()
-            loss = criterion(output_boxes, target_boxes) + criterion(output_labels, target_labels)
-
-            # Compute validation loss or other metrics
             total_val_loss += loss.item()
             
             val_loss = total_val_loss / (batch_idx + 1)
@@ -238,7 +178,7 @@ def main():
     parser.add_argument("--config", required=True, help="Path to the YAML config file")
     parser.add_argument("--resume_checkpoint", help="Path to checkpoint file to resume training")
     parser.add_argument("--log_dir", required=True, help="Path to the log directory")
-    parser.add_argument("--batch_size", type=int, default=64, help="Batch size for training")
+    parser.add_argument("--batch_size", type=int, default=4, help="Batch size for training")  # Adjust batch size according to your GPU memory
     parser.add_argument("--learning_rate", type=float, default=0.001, help="Learning rate for training")
     parser.add_argument("--num_epochs", type=int, default=5, help="Number of training epochs")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")

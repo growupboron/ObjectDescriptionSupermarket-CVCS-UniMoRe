@@ -41,8 +41,8 @@ TRAIN_TRANSFORM = transforms.Compose([
 ])
 TEST_TRANSFORM = transforms.Compose([
 
-    transforms.Resize((320, 320)),  # resize the image to 256x256 pixels
-    transforms.CenterCrop((320, 320)),
+    transforms.Resize((800, 800)),  # resize the image to 256x256 pixels
+    transforms.CenterCrop((800, 800)),
 
     transforms.ToTensor(),  # convert the image to a PyTorch tensor
     transforms.Normalize(mean=mean, std=std)  # normalize the image
@@ -300,7 +300,6 @@ def pad_labels(labels, max_num_boxes):
         labels.append(0)
     return labels
 
-
 class SKUDataset(Dataset):
 
     def __init__(self, split, transform=None):
@@ -312,41 +311,80 @@ class SKUDataset(Dataset):
 
         # Load annotations CSV file
         annotations_file = os.path.join(self.annotations_dir, f'annotations_{self.split}.csv')
-        self.annotations_df = pd.read_csv(annotations_file, header=None).dropna()
+        self.annotations_df = pd.read_csv(annotations_file, header=None).dropna()[:20000]
 
     def __len__(self):
-        return len(self.annotations_df)
+        return len(self.annotations_df.iloc[:,0].unique())
 
     def __getitem__(self, idx):
-        row = self.annotations_df.iloc[idx]
-        img_name = row[0]
-        x1 = row[1]
-        y1 = row[2]
-        x2 = row[3]
-        y2 = row[4]
-        class_id = row[5]  # string type, can't covert to integer 
-        image_width = row[6]
-        image_height = row[7]
-        
-        class_id = 0 if class_id == "object" else 1
-        # Load image
-        img_path = os.path.join(self.images_dir, img_name)
+        image_annotations = []
+
+        # Get all rows for the specific image
+        image_name = self.annotations_df.iloc[idx, 0]
+        image_rows = self.annotations_df[self.annotations_df[0] == image_name]
+
+        img_path = os.path.join(self.images_dir, image_name)
         try:
             image = Image.open(img_path).convert('RGB')
         except (OSError, IOError) as e:
             print(f"Error loading image {img_path}: {e}")
-            # You can choose to return a placeholder image or any other action
-            # For example, return a blank image:
             image = Image.new('RGB', (image_width, image_height), (0, 0, 0))
             error_log_path = 'corrupted_images.log'
             with open(error_log_path, 'a') as f:
                 f.write(f"Corrupted image: {img_path}\n")
 
-        # Apply transformation if available
+        for _, row in image_rows.iterrows():
+            x1 = row[1]
+            y1 = row[2]
+            x2 = row[3]
+            y2 = row[4]
+            class_id = row[5]
+            image_width = row[6]
+            image_height = row[7]
+            
+            x1, x2 = min(x1, x2), max(x1, x2)
+            
+            y1, y2 = min(y1, y2), max(y1, y2)
+            
+            class_id = 0 if class_id == "object" else 1
+
+            # Scale annotations according to the resized image
+            x1 = x1 / image_width * 800
+            y1 = y1 / image_height * 800
+            x2 = x2 / image_width * 800
+            y2 = y2 / image_height * 800
+
+            # Append annotation to the list
+            image_annotations.append([x1, y1, x2, y2, class_id, image_width, image_height])
+        
+        # Convert annotations to tensors
+        x1 = torch.tensor([annot[0] for annot in image_annotations])
+        y1 = torch.tensor([annot[1] for annot in image_annotations])
+        x2 = torch.tensor([annot[2] for annot in image_annotations])
+        y2 = torch.tensor([annot[3] for annot in image_annotations])
+        class_ids = torch.tensor([annot[4] for annot in image_annotations])
+        image_widths = torch.tensor([annot[5] for annot in image_annotations])
+        image_heights = torch.tensor([annot[6] for annot in image_annotations])
+
+        # Apply transformation if available to the image
         if self.transform:
             image = self.transform(image)
 
-        return image, x1, y1, x2, y2, class_id, image_width, image_height
+        return image, x1, y1, x2, y2, class_ids, image_widths, image_heights
+
+    
+    def custom_collate_fn(self, batch):
+        images, x1, y1, x2, y2, class_ids, image_widths, image_heights = zip(*batch)
+        images = torch.stack(images)
+        x1 = torch.cat(x1)
+        y1 = torch.cat(y1)
+        x2 = torch.cat(x2)
+        y2 = torch.cat(y2)
+        class_ids = torch.cat(class_ids)
+        image_widths = torch.cat(image_widths)
+        image_heights = torch.cat(image_heights)
+        
+        return images, x1, y1, x2, y2, class_ids, image_widths, image_heights
 
 ####################################################################################
 #                                                                                  #
@@ -447,57 +485,6 @@ class SKUDataset(Dataset):
         return image, x1, y1, x2, y2, class_id, image_width, image_height
 
 """
-
-# class SKUDatasetGPU(Dataset):
-#     def __init__(self, split, transform=None):
-#         self.root_dir = '/work/cvcs_2023_group23/SKU110K_fixed'
-#         self.images_dir = os.path.join(self.root_dir, 'images')
-#         self.annotations_dir = os.path.join(self.root_dir, 'annotations')
-#         self.split = split
-#         self.transform = transform
-
-#         # Load annotations CSV file
-#         annotations_file = os.path.join(self.annotations_dir, f'annotations_{self.split}.csv')
-#         self.annotations_df = pd.read_csv(annotations_file, header=None)
-
-#     def __len__(self):
-#         return len(self.annotations_df)
-#     def classes(self):
-#         return self.annotations_df.iloc[:,5].unique()
-#     def num_classes(self):
-#         return self.classes().shape[0]
-
-#     def __getitem__(self, idx):
-#         row = self.annotations_df.iloc[idx]
-#         img_name = row[0]
-#         x1 = row[1]
-#         y1 = row[2]
-#         x2 = row[3]
-#         y2 = row[4]
-#         class_id = row[5]
-#         image_width = row[6]
-#         image_height = row[7]
-
-#         try:
-#             class_id = int(class_id)  # Convert class_id to an integer
-#         except ValueError:
-#             # Handle erroneous data, such as setting a default value or skipping the sample
-#             class_id = -1  # Set a default value for class_id
-
-#         # Load image
-#         img_path = os.path.join(self.images_dir, img_name)
-#         image = Image.open(img_path).convert('RGB')
-
-#         # Apply transformation if available
-#         if self.transform:
-#             image = self.transform(image)
-
-#         targets = {}
-        
-#         targets['boxes'] = torch.tensor([[x1, y1, x2, y2]], dtype=torch.float32) if class_id != -1 else torch.tensor(list())
-#         targets['labels'] = torch.tensor([class_id], dtype=torch.int64) if class_id != -1 else torch.tensor(list())
-
-#         return image, targets
 
 
 class SKUDatasetGPU(Dataset):
