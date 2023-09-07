@@ -2,19 +2,22 @@ import os
 import argparse
 import logging
 import time
+import math
 import torch
 import torch.backends.cudnn as cudnn
 from tqdm import tqdm
 import torch.nn as nn
 from torch.optim import AdamW
-from torch.optim.lr_scheduler import StepLR
+from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau
 from torch.utils.data import DataLoader
+import torchvision
 from torchvision.models.detection import ssdlite320_mobilenet_v3_large
 from torchvision.models.detection.ssdlite import SSDLiteClassificationHead
 from torchvision.models.detection import _utils as det_utils
+import torchvision.ops as ops
 from torch.nn import SmoothL1Loss
 from torch.utils.tensorboard import SummaryWriter
-from datasets import SKUDataset, TEST_TRANSFORM, TRAIN_TRANSFORM
+from datasets import SKUDataset, TEST_TRANSFORM, TRAIN_TRANSFORM, VAL_TRANSFORM, custom_collate_fn
 import yaml
 from functools import partial
 
@@ -31,24 +34,42 @@ def setup_logging(log_dir, verbose):
 def train(args, config, tensorboard_writer):
     # Data loading setup
     train_dataset = SKUDataset(split='train', transform=TRAIN_TRANSFORM)
-    val_dataset = SKUDataset(split='val', transform=TEST_TRANSFORM)
-    train_dataloader = DataLoader(train_dataset, batch_size=config['training']['batch_size'], shuffle=True, num_workers=2)
-    val_dataloader = DataLoader(val_dataset, batch_size=config['training']['batch_size']//2, shuffle=True, num_workers=2)
+    val_dataset = SKUDataset(split='val', transform=VAL_TRANSFORM)
+    train_dataloader = DataLoader(train_dataset, batch_size=config['training']['batch_size'], shuffle=True, num_workers=2, collate_fn=custom_collate_fn, pin_memory=True)
+    val_dataloader = DataLoader(val_dataset, batch_size=config['training']['batch_size']//2, shuffle=True, num_workers=2, collate_fn=custom_collate_fn, pin_memory=True)
     
     # Model setup
-    model = ssdlite320_mobilenet_v3_large(pretrained=True)
+    model = ssdlite320_mobilenet_v3_large(weights=torchvision.models.detection.SSDLite320_MobileNet_V3_Large_Weights.DEFAULT)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     in_channels = det_utils.retrieve_out_channels(model.backbone, (320, 320))
     num_anchors = model.anchor_generator.num_anchors_per_location()
     norm_layer = partial(nn.BatchNorm2d, eps=0.001, momentum=0.03)
 
-    model.head.classification_head = SSDLiteClassificationHead(in_channels, num_anchors, 2, norm_layer)
-    model.to(device)
+    # model.head.classification_head = SSDLiteClassificationHead(in_channels, num_anchors, 2, norm_layer)
+    # model.to(device)
     
-    optimizer = AdamW(model.parameters(), lr=config['training']['learning_rate'])
-    lr_scheduler = StepLR(optimizer, step_size=5, gamma=0.1)
-    criterion = SmoothL1Loss()
+    dropout = nn.Dropout(p=0.5)
+    model.head.classification_head = nn.Sequential(
+    SSDLiteClassificationHead(in_channels, num_anchors, 2, norm_layer),
+    dropout
+        )
+    model.cuda(0)
+    # model = torch.nn.DataParallel(model)
+
+    # Use weight decay in the optimizer, which is another way to fight overfitting
+    optimizer = AdamW(
+        model.parameters(),
+        lr=config['training']['learning_rate'],
+        betas=(0.9, 0.999),
+        eps=1e-8,
+        weight_decay=0.01
+        )
+
+    # ReduceLROnPlateau scheduler decreases learning rate when a metric has stopped improving
+    lr_scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10)
+    labels_criterion = ops.sigmoid_focal_loss
+    boxes_criterion = ops.generalized_box_iou_loss
 
     # Load checkpoint if available
     start_epoch = 0
@@ -85,6 +106,7 @@ def train(args, config, tensorboard_writer):
             image_width = image_width.to(device)
             image_height = image_height.to(device)
             
+            print(images.shape)
             # Create a list of target dictionaries
             targets = []
             for i in range(len(images)):
@@ -96,14 +118,14 @@ def train(args, config, tensorboard_writer):
                 target["boxes"][3] = y2[i]
                 target["boxes"] = target["boxes"].T
                 target["boxes"] = target["boxes"].to(device)
-                
                 target['labels'] = class_id[i].to(device)
                 target['image_width'] = image_width[i].to(device)
                 target['image_height'] = image_height[i].to(device)
                 targets.append(target)
+
         
                 
-            print(f'Train target shape: {targets[0]["boxes"].shape}')
+            # logging.info(f'Train target shape: {targets[0]["boxes"].shape}')
 
             # Forward pass
             outputs = model(images, targets)
@@ -116,9 +138,9 @@ def train(args, config, tensorboard_writer):
                 loss_output_boxes = outputs['bbox_regression']
                 loss_output_labels = outputs['classification']
             else:
-                print("Error: Keys 'bbox_regression' and 'classification' not found in outputs dictionary.")
+                logging.info("Error: Keys 'bbox_regression' and 'classification' not found in outputs dictionary.")
                 raise KeyError("Keys 'bbox_regression' and 'classification' not found in outputs dictionary.")
-            print(f'Train output shape: {loss_output_boxes.shape} {loss_output_labels.shape}')
+            # print(f'Train output shape: {loss_output_boxes.shape} {loss_output_labels.shape}')
             # Extract tensors from targets list
             target_boxes = torch.cat([target['boxes'] for target in targets])
             target_labels = torch.cat([target['labels'] for target in targets])
@@ -180,13 +202,13 @@ def train(args, config, tensorboard_writer):
                 output_labels = torch.cat([output['labels'] for output in outputs])
             else:
                 print(outputs)
-                print("Error: Keys 'boxes' and 'labels' not found in outputs dictionary.")
+                logging.info("Error: Keys 'boxes' and 'labels' not found in outputs dictionary.")
                 raise KeyError("Keys 'boxes' and 'labels' not found in outputs dictionary.")
 
             # Extract tensors from targets list
             target_boxes = torch.cat([target['boxes'] for target in targets])
             target_labels = torch.cat([target['labels'] for target in targets])
-            print(f"Validation shapes: {output_boxes.shape} {target_boxes.shape}")
+            # print(f"Validation shapes: {output_boxes.shape} {target_boxes.shape}")
             
             # Adjust tensors shapes if needed
             if target_boxes.shape[0] < output_boxes.shape[0]:
@@ -203,7 +225,7 @@ def train(args, config, tensorboard_writer):
             print(f"Validation shapes matched: {output_boxes.shape} {target_boxes.shape}")
             output_labels = output_labels.float()  # Convert to float tensor
             target_labels = target_labels.float()
-            loss = criterion(output_boxes, target_boxes) + criterion(output_labels, target_labels)
+            loss = boxes_criterion(output_boxes, target_boxes, reduction='mean') + labels_criterion(output_labels, target_labels, reduction='mean')
 
             # Compute validation loss or other metrics
             total_val_loss += loss.item()
@@ -213,13 +235,13 @@ def train(args, config, tensorboard_writer):
             val_progress.set_postfix({'Loss': val_loss})
 
         # Adjust learning rate
-        lr_scheduler.step()
+        lr_scheduler.step(metrics=val_loss)
 
         # Calculate epoch duration
         epoch_time = time.time() - start_time
 
         # Print epoch statistics
-        print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {total_train_loss / len(train_dataloader):.4f}, '
+        logging.info(f'Epoch [{epoch+1}/{num_epochs}], Loss: {total_train_loss / len(train_dataloader):.4f}, '
             f'Validation Loss: {total_val_loss / len(val_dataloader):.4f}, Time: {epoch_time:.2f} seconds')
 
         # Save checkpoint after every epoch
@@ -231,7 +253,7 @@ def train(args, config, tensorboard_writer):
             'optimizer_state_dict': optimizer.state_dict(),
             'total_train_loss': total_train_loss
         }, checkpoint_path)
-
+        
 
 def main():
     parser = argparse.ArgumentParser(description="SKU Training Script")

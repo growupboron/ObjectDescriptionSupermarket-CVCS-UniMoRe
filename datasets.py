@@ -10,7 +10,8 @@ import torch
 from PIL import ImageDraw
 from torch.utils.data import Dataset, DataLoader
 import cv2
-
+import torch
+from torch.nn.utils.rnn import pad_sequence
 import torchvision
 import torch.nn as nn
 import torch.optim as optim
@@ -29,7 +30,6 @@ TRAIN_TRANSFORM = transforms.Compose([
     transforms.Resize((320, 320)),  # resize the image to 256x256 pixels
     transforms.CenterCrop((320, 320)),
 
-
     transforms.GaussianBlur(kernel_size=(5, 5)),
     transforms.RandomHorizontalFlip(p=0.5),  #
     # transforms.RandomVerticalFlip(0.4),
@@ -41,8 +41,17 @@ TRAIN_TRANSFORM = transforms.Compose([
 ])
 TEST_TRANSFORM = transforms.Compose([
 
-    transforms.Resize((800, 800)),  # resize the image to 256x256 pixels
-    transforms.CenterCrop((800, 800)),
+    transforms.Resize((320, 320)),  # resize the image to 256x256 pixels
+    transforms.CenterCrop((320, 320)),
+
+    transforms.ToTensor(),  # convert the image to a PyTorch tensor
+    # transforms.Normalize(mean=mean, std=std)  # normalize the image
+])
+
+VAL_TRANSFORM = transforms.Compose([
+
+    transforms.Resize((320, 320)),  # resize the image to 256x256 pixels
+    transforms.CenterCrop((320, 320)),
 
     transforms.ToTensor(),  # convert the image to a PyTorch tensor
     transforms.Normalize(mean=mean, std=std)  # normalize the image
@@ -302,57 +311,65 @@ def pad_labels(labels, max_num_boxes):
 
 class SKUDataset(Dataset):
 
-    def __init__(self, split, transform=None):
+    def __init__(self, split='train', transform=None):
         self.root_dir = '/work/cvcs_2023_group23/SKU110K_fixed'
         self.images_dir = os.path.join(self.root_dir, 'images')
         self.annotations_dir = os.path.join(self.root_dir, 'annotations')
         self.split = split
         self.transform = transform
+        
 
         # Load annotations CSV file
         annotations_file = os.path.join(self.annotations_dir, f'annotations_{self.split}.csv')
-        self.annotations_df = pd.read_csv(annotations_file, header=None).dropna()[:20000]
+        self.annotations_df = (pd.read_csv(annotations_file) if self.split == 'train' else pd.read_csv(annotations_file))
+        self.image_names = self.annotations_df.image_name.unique()
+        # print(len(self.image_names))
+        
+        
 
     def __len__(self):
-        return len(self.annotations_df.iloc[:,0].unique())
+        return len(self.image_names)
 
     def __getitem__(self, idx):
         image_annotations = []
 
         # Get all rows for the specific image
-        image_name = self.annotations_df.iloc[idx, 0]
-        image_rows = self.annotations_df[self.annotations_df[0] == image_name]
-
+        image_name = self.image_names[idx]
+        image_rows = self.annotations_df[self.annotations_df['image_name'] == image_name]
+        
         img_path = os.path.join(self.images_dir, image_name)
+        
+        rows = list(image_rows.iterrows())
+        width, height = rows[0][1]["image_width"], rows[0][1]["image_height"]
         try:
             image = Image.open(img_path).convert('RGB')
         except (OSError, IOError) as e:
             print(f"Error loading image {img_path}: {e}")
-            image = Image.new('RGB', (image_width, image_height), (0, 0, 0))
+            image = Image.new('RGB', (width, height), (0, 0, 0))
             error_log_path = 'corrupted_images.log'
             with open(error_log_path, 'a') as f:
                 f.write(f"Corrupted image: {img_path}\n")
-
+        
         for _, row in image_rows.iterrows():
-            x1 = row[1]
-            y1 = row[2]
-            x2 = row[3]
-            y2 = row[4]
-            class_id = row[5]
-            image_width = row[6]
-            image_height = row[7]
+            x1 = row['x1']
+            y1 = row['y1']
+            x2 = row['x2']
+            y2 = row['y2']
+            class_id = row['class']
+            image_width = row['image_width']
+            image_height = row['image_height']
             
             x1, x2 = min(x1, x2), max(x1, x2)
             
             y1, y2 = min(y1, y2), max(y1, y2)
             
-            class_id = 0 if class_id == "object" else 1
+            class_id = 1 if class_id == "object" else 0
 
             # Scale annotations according to the resized image
-            x1 = x1 / image_width * 800
-            y1 = y1 / image_height * 800
-            x2 = x2 / image_width * 800
-            y2 = y2 / image_height * 800
+            x1 = x1 / image_width * 320
+            y1 = y1 / image_height * 320
+            x2 = x2 / image_width * 320
+            y2 = y2 / image_height * 320
 
             # Append annotation to the list
             image_annotations.append([x1, y1, x2, y2, class_id, image_width, image_height])
@@ -369,22 +386,40 @@ class SKUDataset(Dataset):
         # Apply transformation if available to the image
         if self.transform:
             image = self.transform(image)
+        
 
         return image, x1, y1, x2, y2, class_ids, image_widths, image_heights
 
     
-    def custom_collate_fn(self, batch):
-        images, x1, y1, x2, y2, class_ids, image_widths, image_heights = zip(*batch)
-        images = torch.stack(images)
-        x1 = torch.cat(x1)
-        y1 = torch.cat(y1)
-        x2 = torch.cat(x2)
-        y2 = torch.cat(y2)
-        class_ids = torch.cat(class_ids)
-        image_widths = torch.cat(image_widths)
-        image_heights = torch.cat(image_heights)
-        
-        return images, x1, y1, x2, y2, class_ids, image_widths, image_heights
+
+def custom_collate_fn(batch):
+    """
+    Collate function for SKUDataset.
+
+    Args:
+        batch: A batch of data from the SKUDataset.
+
+    Returns:
+        A batch of data that is ready to be passed to the model.
+    """
+
+    images, x1_tuple, y1_tuple, x2_tuple, y2_tuple, class_ids, image_widths, image_heights = zip(*batch)
+
+    # Pad sequences to the maximum length in the batch
+    x1_padded = pad_sequence(x1_tuple, batch_first=True, padding_value=0)
+    y1_padded = pad_sequence(y1_tuple, batch_first=True, padding_value=0)
+    x2_padded = pad_sequence(x2_tuple, batch_first=True, padding_value=1)
+    y2_padded = pad_sequence(y2_tuple, batch_first=True, padding_value=1)
+    class_ids = pad_sequence(class_ids, batch_first=True, padding_value=0)
+    image_widths = pad_sequence(image_widths, batch_first=True, padding_value=320)
+    image_heights = pad_sequence(image_heights, batch_first=True, padding_value=320)
+
+    # Convert tensors to a torch.Tensor
+    images = torch.stack(images)
+    
+
+    return images, x1_padded, y1_padded, x2_padded, y2_padded, class_ids, image_widths, image_heights
+                
 
 ####################################################################################
 #                                                                                  #
