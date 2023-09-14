@@ -1,0 +1,17 @@
+Epoch [6/55], Loss: 11893250.6389, Validation Loss: 19893744.0000, Time: 129.82 seconds
+Epoch [7/55], Loss: 1805374.0174, Validation Loss: 2019959.0662, Time: 126.85 seconds
+Epoch [8/55], Loss: 277201.4774, Validation Loss: 331655.6985, Time: 126.77 seconds
+Epoch [9/55], Loss: 60672.5177, Validation Loss: 81069.1498, Time: 126.80 seconds
+Epoch [10/55], Loss: 18074.5197, Validation Loss: 32791.7348, Time: 127.16 seconds
+Epoch [11/55], Loss: 10783.0393, Validation Loss: 31215.5238, Time: 126.83 seconds
+Epoch [12/55], Loss: 9196.7753, Validation Loss: 28062.4643, Time: 126.92 seconds
+Epoch [13/55], Loss: 8646.8171, Validation Loss: 26831.3395, Time: 127.06 seconds
+Epoch [14/55], Loss: 8150.8185, Validation Loss: 26239.5520, Time: 127.04 seconds
+Epoch [15/55], Loss: 7729.4558, Validation Loss: 25915.4561, Time: 126.97 seconds
+Epoch [16/55], Loss: 7495.9246, Validation Loss: 25164.0991, Time: 127.04 seconds
+Epoch [17/55], Loss: 7429.5158, Validation Loss: 24957.1631, Time: 127.05 seconds
+Epoch [18/55], Loss: 7504.5184, Validation Loss: 24823.0505, Time: 127.07 seconds
+Epoch [19/55], Loss: 7563.4302, Validation Loss: 24854.5682, Time: 127.14 seconds
+Epoch [20/55], Loss: 7433.7113, Validation Loss: 24227.7283, Time: 127.13 seconds
+Epoch [21/55], Loss: 7213.1903, Validation Loss: 24408.7564, Time: 127.14 seconds
+Epoch [22/55], Loss: 7321.9845, Validation Loss: 24178.2129, Time: 127.14 seconds
