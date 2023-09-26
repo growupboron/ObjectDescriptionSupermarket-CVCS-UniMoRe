@@ -1,5 +1,9 @@
+
+import torch
 import cv2
 import numpy as np
+from torchvision.models.detection import ssdlite320_mobilenet_v3_large
+
 
 
 class HomographyTransform:
@@ -10,5 +14,8 @@ class HomographyTransform:
         self.matrix, _ = cv2.findHomography(self.src_points, self.dst_points)
 
     def apply_transform(self, points):
-        transformed = cv2.perspectiveTransform(np.array([points], dtype=np.float32), self.matrix)
+        points = np.array(points, dtype=np.float32)
+        points = np.expand_dims(points, axis=1)
+        transformed = cv2.perspectiveTransform(points, self.matrix)
         return transformed[0]
+
