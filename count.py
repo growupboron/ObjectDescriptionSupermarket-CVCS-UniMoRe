@@ -123,9 +123,3 @@ def _get_spatial_relationship(self, position1, position2, bbox1, bbox2):
     return relationship
 
 
-if __name__ == "__main__":
-    # Example usage
-    counter = ObjectCounter("path_to_trained_model", "path_to_classifier_model", "src_points", "dst_points")
-    num_objects, positions, relationships, predictions = counter.count_objects_and_relations("path_to_image")
-    print(f"Detected {num_objects} objects.")
-    print("Predictions:", predictions)
