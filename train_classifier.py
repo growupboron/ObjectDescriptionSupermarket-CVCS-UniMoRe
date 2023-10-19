@@ -9,12 +9,20 @@ from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
 from torchvision.models import GoogLeNet_Weights
 
-from datasets import GroceryStoreDataset01, collate_fn, TRAIN_TRANSFORM, TEST_TRANSFORM
+from datasets import GroceryStoreDataset
 from tqdm import tqdm
 
+TEST_TRANSFORM = transforms.Compose([
 
-trainset = GroceryStoreDataset01(split='train', transform=TRAIN_TRANSFORM)
-valset = GroceryStoreDataset01(split='val', transform=TEST_TRANSFORM)
+    transforms.Resize((256, 256)),  # resize the image to 256x256 pixels
+    transforms.CenterCrop((224, 224)),
+
+    transforms.ToTensor(),  # convert the image to a PyTorch tensor
+    # transforms.Normalize(mean=mean, std=std)  # normalize the image
+])
+
+trainset = GroceryStoreDataset(split='train', transform=TRAIN_TRANSFORM)
+valset = GroceryStoreDataset(split='val', transform=TEST_TRANSFORM)
 
 num_classes = len(trainset.classes)
 

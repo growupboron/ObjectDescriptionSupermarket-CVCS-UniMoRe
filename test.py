@@ -30,6 +30,7 @@ import matplotlib.patches as patches
 from torcheval.metrics.functional import binary_precision, binary_recall
 
 cudnn.benchmark = False
+CONFIDENCE_TRESHOLD = .5
 
 index_to_label = {
     0: 'background',
@@ -45,23 +46,31 @@ def visualize_results(images, outputs, writer):
         boxes = outputs[i]['boxes'].cpu().detach().numpy()
         labels = outputs[i]['labels'].cpu().detach().numpy()
         scores = outputs[i]['scores'].cpu().detach().numpy()
+        
+        # Apply NMS to the boxes and scores, with a threshold of 0.8
+        keep_boxes = ops.nms(torch.from_numpy(boxes), torch.from_numpy(scores), 0.7)
+
+        # Keep only the boxes that were not suppressed by NMS.
+        boxes = boxes[keep_boxes]
+        scores = scores[keep_boxes]
 
         fig, ax = plt.subplots()
         ax.imshow(image)
         n = 0
         for box, label, score in zip(boxes, labels, scores):
             n += 1
-            # print(label)
-            if score > 0.5 and n < 25:
-                x1, y1, x2, y2 = box
-                print(f"box: {box}\tscore{score}")
-                # Draw the bounding box on the image.
-                rect = patches.Rectangle((x1, y1), (x2-x1), (y2-y1), linewidth=1, edgecolor='r', facecolor='none')
+            if not score > CONFIDENCE_TRESHOLD:
+                continue
+            
+            x1, y1, x2, y2 = box
+            print(f"box: {box}\tscore{score}")
+            # Draw the bounding box on the image.
+            rect = patches.Rectangle((x1, y1), (x2-x1), (y2-y1), linewidth=1, edgecolor='r', facecolor='none')
 
-                # Add the patch to the Axes
-                ax.add_patch(rect)
-                # Write the label on the image.
-                ax.text(x1, y1, index_to_label[label], color='red', fontsize=10)
+            # Add the patch to the Axes
+            ax.add_patch(rect)
+            # Write the label on the image.
+            ax.text(x1, y1, index_to_label[label], color='red', fontsize=10)
 
         
         # Save the image to TensorBoard
@@ -94,7 +103,11 @@ def test(args, config):
         num_anchors = model.anchor_generator.num_anchors_per_location()
         norm_layer = partial(nn.BatchNorm2d, eps=0.001, momentum=0.03)
 
-        model.head.classification_head = SSDLiteClassificationHead(in_channels, num_anchors, 2, norm_layer)
+        dropout = nn.Dropout(p=0.5)
+        model.head.classification_head = nn.Sequential(
+            SSDLiteClassificationHead(in_channels, num_anchors, 2, norm_layer),
+            dropout
+        )
         checkpoint = torch.load('./checkpoints/checkpoint.pth')
     else:
         model = fasterrcnn_resnet50_fpn(pretrained=True)
@@ -107,7 +120,7 @@ def test(args, config):
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         
         checkpoint = torch.load('./checkpoints/checkpoint.pth')
-        model.load_state_dict(checkpoint["model_state_dict"])
+    model.load_state_dict(checkpoint["model_state_dict"])
         
     model.cuda(0)
     # model = torch.nn.DataParallel(model)
@@ -117,7 +130,7 @@ def test(args, config):
 
     # Load test images
     test_dataset = SKUDataset(split='test', transform=TEST_TRANSFORM)
-    test_dataloader = DataLoader(test_dataset, batch_size=5, shuffle=True, collate_fn=custom_collate_fn, num_workers=2, pin_memory=True)
+    test_dataloader = DataLoader(test_dataset, batch_size=10, shuffle=True, collate_fn=custom_collate_fn, num_workers=2, pin_memory=True)
 
     
 

@@ -58,7 +58,7 @@ VAL_TRANSFORM = transforms.Compose([
 ])
 
 
-class GroceryStoreDataset01(Dataset):
+class GroceryStoreDataset(Dataset):
 
     # directory structure:
     # - root/[train/test/val]/[vegetable/fruit/packages]/[vegetables/fruit/packages]_class/[vegetables/fruit/packages]_subclass/[vegetables/fruit/packages]_image.jpg
@@ -67,7 +67,7 @@ class GroceryStoreDataset01(Dataset):
     # - root/test.txt
     # - root/val.txt
     def __init__(self, split='train', transform=None):
-        super(GroceryStoreDataset01, self).__init__()
+        super(GroceryStoreDataset, self).__init__()
         self.root = "Datasets/GroceryStoreDataset-1/dataset"
         self.split = split
         self.transform = transform
@@ -76,7 +76,7 @@ class GroceryStoreDataset01(Dataset):
 
         classes_file = os.path.join(self.root, "classes.csv")
 
-        self.classes = {}
+        self.classes = {'81':'background'}
         with open(classes_file, "r") as f:
 
             lines = f.readlines()
@@ -120,7 +120,7 @@ def collate_fn(batch):
     """
     Collate function that pads sequences to the same length.
     """
-    print(batch[0][1])
+    
     inputs = [torch.clone(item[0]).detach() for item in batch]
     targets = [torch.clone(item[1]).detach() for item in batch]
 
@@ -321,7 +321,7 @@ class SKUDataset(Dataset):
 
         # Load annotations CSV file
         annotations_file = os.path.join(self.annotations_dir, f'annotations_{self.split}.csv')
-        self.annotations_df = (pd.read_csv(annotations_file) if self.split == 'train' else pd.read_csv(annotations_file))
+        self.annotations_df = (pd.read_csv(annotations_file) if self.split == 'train' else pd.read_csv(annotations_file)[:50000])
         self.image_names = self.annotations_df.image_name.unique()
         # print(len(self.image_names))
         

@@ -4,14 +4,14 @@ logging:
     verbose: True
 
 training:
-    batch_size: 64
-    learning_rate: 0.001
+    batch_size: 32
+    learning_rate: 0.0078
     num_epochs: 5
 
 train : images
 val: images
 
-#classes
+# classes
 names:
     0: Price
     1: Product
