@@ -1,0 +1,24 @@
+name: Merge Repositories
+
+on:
+  workflow_dispatch:
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Original Repository
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: Add New Repository Remote
+        run: |
+          git remote add new-repo https://github.com/MicheleBellitti/ObjectDescriptionSupermarket-CVCS-UniMoRe.git
+          git fetch new-repo
+
+      - name: Merge New Repository
+        run: |
+          git merge new-repo/main --allow-unrelated-histories -m "Merged new repository into original repository"
+          git push origin main
