@@ -1,4 +1,4 @@
-name: Merge Repositories
+name: Merge Repositories with History
 
 on:
   workflow_dispatch:
@@ -13,12 +13,14 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Add New Repository Remote
+      - name: Configure Git
+        run: |
+          git config user.name "growupboron"
+          git config user.email "shankhoghosh123@gmail.com"
+
+      - name: Merge New Repository with History
         run: |
           git remote add new-repo https://github.com/MicheleBellitti/ObjectDescriptionSupermarket-CVCS-UniMoRe.git
           git fetch new-repo
-
-      - name: Merge New Repository
-        run: |
-          git merge new-repo/main --allow-unrelated-histories -m "Merged new repository into original repository"
+          git merge --allow-unrelated-histories new-repo/main -m "Merged new repository into original repository preserving history"
           git push origin main
