@@ -1,21 +1,40 @@
-
-import torch
 import cv2
 import numpy as np
-from torchvision.models.detection import ssdlite320_mobilenet_v3_large
-
 
 
 class HomographyTransform:
 
-    def __init__(self, src_points, dst_points):
-        self.src_points = np.array(src_points, dtype=np.float32)
-        self.dst_points = np.array(dst_points, dtype=np.float32)
-        self.matrix, _ = cv2.findHomography(self.src_points, self.dst_points)
+    def __init__(self):
+        pass
 
-    def apply_transform(self, points):
-        points = np.array(points, dtype=np.float32)
-        points = np.expand_dims(points, axis=1)
-        transformed = cv2.perspectiveTransform(points, self.matrix)
+    def calculate_homography_and_transform(self, bbox1, bbox2):
+        """
+
+        Args:
+            bbox1 ([Tuple]): first bounding box coordinates in format (x_min, y_min, x_max, y_max)
+            bbox2 ([Tuple]): second bounding box coordinates in format (x_min, y_min, x_max, y_max)
+
+        Returns:
+            [cv2::UMat]: Result of homography transformation applied
+        """
+        src_points = self._extract_corners(bbox1)
+        dst_points = self._extract_corners(bbox2)
+
+        matrix, _ = cv2.findHomography(src_points, dst_points)
+        transformed = cv2.perspectiveTransform(
+            src_points.reshape(1, -1, 2), matrix)
+
         return transformed[0]
 
+    def _extract_corners(self, bbox):
+        """
+        Function for extracting corners from a bounding box
+
+        Args:
+            bbox ([Tuple]): bounding box coordinates in format (x_min, y_min, x_max, y_max)
+
+        Returns:
+            [numpy.NDArray]: Array containing the coordinates of the 4 corners extracted
+        """
+        x_min, y_min, x_max, y_max = bbox
+        return np.float32([[x_min, y_min], [x_max, y_min], [x_max, y_max], [x_min, y_max]])

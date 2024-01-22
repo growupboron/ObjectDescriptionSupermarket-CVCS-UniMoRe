@@ -11,6 +11,7 @@ from PIL import ImageDraw
 from torch.utils.data import Dataset, DataLoader
 import cv2
 import torch
+import random
 from torch.nn.utils.rnn import pad_sequence
 import torchvision
 import torch.nn as nn
@@ -26,35 +27,30 @@ mean = (0.485, 0.456, 0.406)
 std = (0.229, 0.224, 0.225)
 # Define transforms
 TRAIN_TRANSFORM = transforms.Compose([
-
-    transforms.Resize((320, 320)),  # resize the image to 256x256 pixels
-    transforms.CenterCrop((320, 320)),
-
-    transforms.GaussianBlur(kernel_size=(5, 5)),
-    transforms.RandomHorizontalFlip(p=0.5),  #
-    # transforms.RandomVerticalFlip(0.4),
-    transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.025),
-    transforms.ToTensor(),  # convert the image to a PyTorch tensor
-    transforms.Normalize(mean=mean, std=std)  # normalize the image
-    # see https://pytorch.org/docs/stable/torchvision/transforms.html for more transforms
-    #
+    transforms.Resize((1024, 1024)),  # Resize the image
+    #transforms.RandomResizedCrop(800, scale=(0.8, 1.0)),  # Random crop and resize
+    transforms.RandomHorizontalFlip(p=0.5),  # Random horizontal flip
+    #transforms.RandomVerticalFlip(p=0.2),  # Random vertical flip (optional)
+    #transforms.RandomRotation(15),  # Random rotation by +/- 15 degrees
+    #transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.05),  # Color jitter
+    #transforms.RandomPerspective(distortion_scale=0.2, p=0.2),  # Random perspective
+    transforms.GaussianBlur(kernel_size=(3, 3), sigma=(0.1, 2.0)),  # Gaussian blur with variable sigma
+    transforms.ToTensor(),  # Convert to tensor
+    transforms.Normalize(mean=mean, std=std)  # Normalize
 ])
+
 TEST_TRANSFORM = transforms.Compose([
-
-    transforms.Resize((320, 320)),  # resize the image to 256x256 pixels
-    transforms.CenterCrop((320, 320)),
-
-    transforms.ToTensor(),  # convert the image to a PyTorch tensor
-    # transforms.Normalize(mean=mean, std=std)  # normalize the image
+    transforms.Resize((1024, 1024)),  # Resize the image
+    #transforms.CenterCrop(1024),  # Center crop
+    transforms.ToTensor(),  # Convert to tensor
+    # transforms.Normalize(mean=mean, std=std)  # Normalize
 ])
 
 VAL_TRANSFORM = transforms.Compose([
-
-    transforms.Resize((320, 320)),  # resize the image to 256x256 pixels
-    transforms.CenterCrop((320, 320)),
-
-    transforms.ToTensor(),  # convert the image to a PyTorch tensor
-    transforms.Normalize(mean=mean, std=std)  # normalize the image
+    transforms.Resize((1024, 1024)),  # Resize the image
+    #transforms.CenterCrop(1024),  # Center crop
+    transforms.ToTensor(),  # Convert to tensor
+    transforms.Normalize(mean=mean, std=std)  # Normalize
 ])
 
 
@@ -332,6 +328,7 @@ class SKUDataset(Dataset):
 
     def __getitem__(self, idx):
         image_annotations = []
+        image = None
 
         # Get all rows for the specific image
         image_name = self.image_names[idx]
@@ -344,7 +341,7 @@ class SKUDataset(Dataset):
         try:
             image = Image.open(img_path).convert('RGB')
         except (OSError, IOError) as e:
-            print(f"Error loading image {img_path}: {e}")
+            # print(f"Error loading image {img_path}: {e}")
             image = Image.new('RGB', (width, height), (0, 0, 0))
             error_log_path = 'corrupted_images.log'
             with open(error_log_path, 'a') as f:
@@ -366,10 +363,10 @@ class SKUDataset(Dataset):
             class_id = 1 if class_id == "object" else 0
 
             # Scale annotations according to the resized image
-            x1 = x1 / image_width * 320
-            y1 = y1 / image_height * 320
-            x2 = x2 / image_width * 320
-            y2 = y2 / image_height * 320
+            x1 = x1 / image_width * 1024
+            y1 = y1 / image_height * 1024
+            x2 = x2 / image_width * 1024
+            y2 = y2 / image_height * 1024
 
             # Append annotation to the list
             image_annotations.append([x1, y1, x2, y2, class_id, image_width, image_height])
@@ -384,7 +381,7 @@ class SKUDataset(Dataset):
         image_heights = torch.tensor([annot[6] for annot in image_annotations])
 
         # Apply transformation if available to the image
-        if self.transform:
+        if self.transform and image:
             image = self.transform(image)
         
 
