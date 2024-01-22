@@ -1,4 +1,4 @@
-name: Merge Repositories with History
+name: Merge Repositories with History Prioritizing New Repo
 
 on:
   workflow_dispatch:
@@ -15,12 +15,15 @@ jobs:
 
       - name: Configure Git
         run: |
-          git config user.name "growupboron"
-          git config user.email "shankhoghosh123@gmail.com"
+          git config user.name "GitHub Action"
+          git config user.email "<your-email>"
 
-      - name: Merge New Repository with History
+      - name: Add New Repository Remote and Fetch
         run: |
           git remote add new-repo https://github.com/MicheleBellitti/ObjectDescriptionSupermarket-CVCS-UniMoRe.git
           git fetch new-repo
-          git merge --allow-unrelated-histories new-repo/main -m "Merged new repository into original repository preserving history"
+
+      - name: Merge New Repository with History Prioritizing New Repo
+        run: |
+          git merge new-repo/main --allow-unrelated-histories -X theirs -m "Merged new repository into original repository preserving history and prioritizing new repo in conflicts"
           git push origin main
